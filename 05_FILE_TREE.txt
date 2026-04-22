@@ -1,0 +1,215 @@
+PROPeller VIEWER — FILE TREE REFERENCE
+
+Purpose:
+This file is a navigation aid for the app structure.
+It helps identify where responsibilities live before patching files.
+It is supporting implementation context only.
+It does not override:
+- 01_Source of Truth - Math Spec.md
+- 02_dads_equation.txt
+- 03_tech_drawing.png
+
+If this file conflicts with the governing source files, the governing source files win.
+
+================================================================
+PROJECT AUTHORITY STACK
+================================================================
+
+These files may live in the ChatGPT project as source/context files:
+
+01_Source of Truth - Math Spec.md
+02_dads_equation.txt
+03_tech_drawing.png
+04_README_APP_CONTEXT.md
+05_FILE_TREE.txt
+
+Authority order:
+1. 01_Source of Truth - Math Spec.md
+2. 02_dads_equation.txt
+3. 03_tech_drawing.png
+4. 04_README_APP_CONTEXT.md
+5. 05_FILE_TREE.txt
+6. downstream implementation chats and source files
+
+================================================================
+CONFIRMED REPOSITORY IMPLEMENTATION TREE
+================================================================
+
+propeller-viewer/
+├── 04_README_APP_CONTEXT.md
+├── package.json
+└── src/
+    ├── App.css
+    ├── App.jsx
+    ├── index.css
+    ├── main.jsx
+    ├── assets/
+    │   ├── hero.png
+    │   ├── react.svg
+    │   └── vite.svg
+    ├── config/
+    │   └── defaultParams.js
+    ├── geometry/
+    │   ├── bladeMesh.js
+    │   └── surfaceMath.js
+    ├── hooks/
+    │   └── usePropellerSpin.js
+    └── scene/
+        ├── BladeAssembly.jsx
+        ├── BladeSurfaceMesh.jsx
+        ├── DebugCurve.jsx
+        ├── ProbePoint.jsx
+        ├── PropellerScene.jsx
+        ├── SceneAxes.jsx
+        └── ShaftReference.jsx
+
+================================================================
+FILE ROLE SUMMARY
+================================================================
+
+Top level
+- 04_README_APP_CONTEXT.md
+  Supporting implementation context for the app.
+  Explains purpose, current build state, file responsibilities, scene behaviour,
+  validation intent, rendering intent, and patch workflow expectations.
+
+- package.json
+  Vite / React project definition, scripts, and dependencies.
+
+src/
+- App.jsx
+  Main application shell.
+  Handles layout, controls, validation readout, surface readout, view requests,
+  and Canvas setup.
+
+- App.css
+  App-level layout and styling.
+  Likely place for desktop split layout, sticky viewport behaviour,
+  control panel spacing, and responsive styling.
+
+- index.css
+  Global baseline styles.
+  Likely place for root sizing, body defaults, and full-page behaviour.
+
+- main.jsx
+  React entry point.
+
+src/config/
+- defaultParams.js
+  Default user-facing settings and ranges.
+  Main reference for startup values, slider ranges, validation config,
+  and mesh segment counts.
+
+src/geometry/
+- surfaceMath.js
+  Governing surface math utilities.
+  Includes point generation, derivatives, local frame logic, UV mapping,
+  and parameter clamping/sanitisation.
+
+- bladeMesh.js
+  Converts sampled mathematical surface data into renderable mesh data.
+  High-sensitivity file because mesh interpretation can drift from source math
+  if changed carelessly.
+
+src/hooks/
+- usePropellerSpin.js
+  Applies RPM-based rotation to the full propeller assembly.
+  Motion logic stays separate from geometry generation.
+
+src/scene/
+- PropellerScene.jsx
+  Main 3D scene composition.
+  Handles lighting, grid, axes, shaft reference, orbit controls,
+  camera snap controller, and placement of the rotating assembly.
+
+- BladeAssembly.jsx
+  Builds the two-blade rotating assembly.
+  Applies shared geometry, second-blade duplication, debug overlays,
+  probe placement, and assembly-level spin.
+
+- BladeSurfaceMesh.jsx
+  Pure rendering component for one blade mesh.
+  Handles material display and blade edge readability.
+
+- DebugCurve.jsx
+  Debug / inspection geometry for constant-r or constant-b display.
+
+- ProbePoint.jsx
+  Probe marker and local inspection display.
+
+- SceneAxes.jsx
+  XYZ axis display.
+
+- ShaftReference.jsx
+  Shaft-aligned reference element along the z-axis.
+
+src/assets/
+- hero.png
+- react.svg
+- vite.svg
+  Static assets.
+
+================================================================
+EDITING GUIDANCE BY REQUEST TYPE
+================================================================
+
+If the request is about:
+
+1. Layout / sticky viewport / independent scrolling
+   Check first:
+   - src/App.jsx
+   - src/App.css
+   - src/index.css
+
+2. Startup defaults / colours / RPM / slider ranges
+   Check first:
+   - src/config/defaultParams.js
+   - src/App.jsx
+
+3. Camera presets / view snapping / orbit target
+   Check first:
+   - src/scene/PropellerScene.jsx
+   - src/App.jsx
+
+4. Surface math fidelity / equations / local frame / validation issues
+   Check first:
+   - src/geometry/surfaceMath.js
+   - src/App.jsx
+   - src/geometry/bladeMesh.js
+
+5. Mesh shape / rendering interpretation / surface sampling
+   Check first:
+   - src/geometry/bladeMesh.js
+   - src/scene/BladeAssembly.jsx
+   - src/scene/BladeSurfaceMesh.jsx
+
+6. Spin behaviour
+   Check first:
+   - src/hooks/usePropellerSpin.js
+   - src/scene/BladeAssembly.jsx
+
+7. Scene readability / axes / shaft / debug overlays
+   Check first:
+   - src/scene/PropellerScene.jsx
+   - src/scene/SceneAxes.jsx
+   - src/scene/ShaftReference.jsx
+   - src/scene/DebugCurve.jsx
+   - src/scene/ProbePoint.jsx
+
+================================================================
+PATCH WORKFLOW REMINDER
+================================================================
+
+Before changing code:
+1. identify which files are affected
+2. explain why those files are involved
+3. patch only those files
+4. preserve source fidelity to files 01 to 03
+5. do not let file-tree assumptions override the governing math
+
+================================================================
+NOTE
+================================================================
+
+This tree is intended as a practical working map, not an absolute substitute
+for the live repository contents if the repository expands over time.
