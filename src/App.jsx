@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import {
   defaultParams,
@@ -186,8 +186,93 @@ function Card({ title, children }) {
         marginBottom: 16,
       }}
     >
-      <strong style={{ display: "block", marginBottom: 12 }}>{title}</strong>
+      <strong style={{ display: "block", marginBottom: 12, color: "#f3f6fb" }}>
+        {title}
+      </strong>
       {children}
+    </div>
+  );
+}
+
+function ProjectHeader({ compact = false }) {
+  return (
+    <div
+      style={{
+        marginBottom: 18,
+        padding: compact ? 16 : 18,
+        borderRadius: 14,
+        border: "1px solid #2a3040",
+        background:
+          "linear-gradient(180deg, rgba(24,30,42,0.96) 0%, rgba(14,18,26,0.98) 100%)",
+        boxShadow: "0 10px 30px rgba(0,0,0,0.22)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 700,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+          color: "#8fa7cf",
+          marginBottom: 10,
+        }}
+      >
+        Rooster Labs
+      </div>
+
+      <h1
+        style={{
+          margin: "0 0 10px 0",
+          fontSize: compact ? 24 : 28,
+          lineHeight: 1.1,
+          letterSpacing: "-0.02em",
+          color: "#f7f9fc",
+        }}
+      >
+        Parametric Propeller Viewer
+      </h1>
+
+      <p
+        style={{
+          margin: "0 0 12px 0",
+          fontSize: compact ? 14 : 15,
+          lineHeight: 1.6,
+          color: "#d9e1ec",
+        }}
+      >
+        Rooster Labs brings together legacy invention, enduring mathematical
+        insight, and modern interactive 3D tools across three generations to
+        bring a pre-digital propeller concept back to life.
+      </p>
+
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "6px 10px",
+          borderRadius: 999,
+          background: "rgba(112, 139, 186, 0.12)",
+          border: "1px solid rgba(120, 150, 195, 0.22)",
+          color: "#aab8d0",
+          fontSize: 12,
+          fontWeight: 600,
+        }}
+      >
+        Current build: Stage 5 — Parametric Domain + Surface Inspection
+      </div>
+
+      <p
+        style={{
+          margin: "12px 0 0 0",
+          fontSize: 12.5,
+          lineHeight: 1.55,
+          color: "#97a6bf",
+        }}
+      >
+        Exact sampled parametric surface with editable radial span, editable
+        angular window, live probe inspection, and rotational motion controls.
+      </p>
     </div>
   );
 }
@@ -209,6 +294,7 @@ function ControlRow({
           justifyContent: "space-between",
           marginBottom: 6,
           fontSize: 13,
+          color: "#eef2f7",
         }}
       >
         <span>{label}</span>
@@ -238,6 +324,7 @@ function PropFormControl({ value, onSliderChange, onInputChange }) {
           alignItems: "center",
           marginBottom: 6,
           fontSize: 13,
+          color: "#eef2f7",
         }}
       >
         <span>Angular multiplier (n)</span>
@@ -287,6 +374,7 @@ function ColorRow({ label, value, onChange }) {
           alignItems: "center",
           marginBottom: 6,
           fontSize: 13,
+          color: "#eef2f7",
         }}
       >
         <span>{label}</span>
@@ -330,7 +418,9 @@ function CheckboxRow({ label, checked, onChange, hint }) {
         style={{ marginTop: 2 }}
       />
       <span>
-        <span style={{ display: "block", fontSize: 13 }}>{label}</span>
+        <span style={{ display: "block", fontSize: 13, color: "#eef2f7" }}>
+          {label}
+        </span>
         {hint && (
           <span style={{ display: "block", fontSize: 12, color: "#aab3c2" }}>
             {hint}
@@ -383,7 +473,7 @@ function ValidationPanel({ results }) {
           marginBottom: 10,
         }}
       >
-        <strong style={{ fontSize: 14 }}>Validation</strong>
+        <strong style={{ fontSize: 14, color: "#f3f6fb" }}>Validation</strong>
         <span
           style={{
             fontSize: 12,
@@ -420,7 +510,7 @@ function ValidationPanel({ results }) {
               >
                 {result.pass ? "✓" : "✗"}
               </span>
-              <span style={{ fontSize: 13 }}>{result.label}</span>
+              <span style={{ fontSize: 13, color: "#e8edf5" }}>{result.label}</span>
             </div>
 
             {result.detail && (
@@ -479,6 +569,21 @@ function ProbeReadout({ frame }) {
 
 export default function App() {
   const [params, setParams] = useState(clampSurfaceParams(defaultParams));
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth : 1280
+  );
+
+  useEffect(() => {
+    const handleResize = () => {
+      setViewportWidth(window.innerWidth);
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const isStackedLayout = viewportWidth < 900;
+  const sidebarWidth = viewportWidth < 1180 ? 400 : 430;
 
   const updateParam = (key, value) => {
     setParams((prev) => {
@@ -526,9 +631,12 @@ export default function App() {
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "360px 1fr",
-        height: "100vh",
-        width: "100vw",
+        gridTemplateColumns: isStackedLayout
+          ? "1fr"
+          : `${sidebarWidth}px minmax(0, 1fr)`,
+        gridTemplateRows: isStackedLayout ? "auto minmax(460px, 60vh)" : "1fr",
+        minHeight: "100vh",
+        width: "100%",
         background: "#0b0d12",
         color: "#eef2f7",
         fontFamily:
@@ -537,29 +645,14 @@ export default function App() {
     >
       <aside
         style={{
-          padding: 18,
-          borderRight: "1px solid #1d2230",
-          overflowY: "auto",
+          padding: isStackedLayout ? 16 : 18,
+          borderRight: isStackedLayout ? "none" : "1px solid #1d2230",
+          borderBottom: isStackedLayout ? "1px solid #1d2230" : "none",
+          overflowY: isStackedLayout ? "visible" : "auto",
           background: "#0f1219",
         }}
       >
-        <h1 style={{ fontSize: 20, margin: "0 0 6px 0" }}>
-          Stage 5 — Parametric Domain + Surface Inspection
-        </h1>
-
-        <p
-          style={{
-            margin: "0 0 18px 0",
-            fontSize: 13,
-            lineHeight: 1.5,
-            color: "#b7c0d0",
-          }}
-        >
-          The blade remains the exact sampled surface defined by the original
-          parametric equations, but the radial span and angular window are now
-          editable. A probe overlay exposes a live point, local tangents, and
-          surface normal on blade 1.
-        </p>
+        <ProjectHeader compact={isStackedLayout} />
 
         <Card title="Geometry domain">
           <PropFormControl
@@ -644,7 +737,8 @@ export default function App() {
 
           <div style={{ marginBottom: 14 }}>
             <div style={{ marginBottom: 6, fontSize: 13, color: "#b7c0d0" }}>
-              angular speed: <strong>{rpmToRadPerSec(params.rpm).toFixed(3)} rad/s</strong>
+              angular speed:{" "}
+              <strong>{rpmToRadPerSec(params.rpm).toFixed(3)} rad/s</strong>
             </div>
             <ToggleButton isRunning={params.isRunning} onToggle={toggleRunning} />
           </div>
@@ -707,16 +801,27 @@ export default function App() {
         <ValidationPanel results={validationResults} />
       </aside>
 
-      <main style={{ position: "relative" }}>
-        <Canvas camera={{ position: [4.4, 3.4, 5.2], fov: 50, near: 0.1, far: 100 }}>
+      <main
+        style={{
+          position: "relative",
+          minHeight: isStackedLayout ? 460 : "100vh",
+          height: isStackedLayout ? "60vh" : "100vh",
+        }}
+      >
+        <Canvas
+          style={{ width: "100%", height: "100%" }}
+          camera={{ position: [4.4, 3.4, 5.2], fov: 50, near: 0.1, far: 100 }}
+        >
           <PropellerScene params={params} />
         </Canvas>
 
         <div
           style={{
             position: "absolute",
-            right: 16,
-            top: 16,
+            right: isStackedLayout ? 12 : 16,
+            left: isStackedLayout ? 12 : "auto",
+            top: isStackedLayout ? 12 : 16,
+            maxWidth: isStackedLayout ? "none" : 330,
             background: "rgba(12,14,20,0.82)",
             border: "1px solid rgba(255,255,255,0.08)",
             borderRadius: 10,
@@ -728,17 +833,24 @@ export default function App() {
           }}
         >
           <div>
-            <strong>Stage 5 viewport</strong>
+            <strong>Rooster Labs</strong>
           </div>
-          <div>Unlocked radial and angular surface domain</div>
-          <div>Two identical blades rotated 180° about z</div>
+          <div>Parametric Propeller Viewer</div>
+          <div style={{ color: "#9fb0ca" }}>
+            Stage 5 — Parametric Domain + Surface Inspection
+          </div>
           <div>
-            Domain: r {params.rMin.toFixed(2)} → {params.rMax.toFixed(2)}, b {params.bMin.toFixed(0)}° → {params.bMax.toFixed(0)}°
+            Domain: r {params.rMin.toFixed(2)} → {params.rMax.toFixed(2)}, b{" "}
+            {params.bMin.toFixed(0)}° → {params.bMax.toFixed(0)}°
           </div>
           <div>
             Probe: r {probeFrame.r.toFixed(2)}, b {probeFrame.bDeg.toFixed(1)}°
           </div>
-          <div>{params.isRunning ? `Running at ${params.rpm.toFixed(0)} rpm` : "Stopped"}</div>
+          <div>
+            {params.isRunning
+              ? `Running at ${params.rpm.toFixed(0)} rpm`
+              : "Stopped"}
+          </div>
         </div>
       </main>
     </div>
