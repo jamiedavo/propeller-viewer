@@ -453,6 +453,74 @@ function ToggleButton({ isRunning, onToggle }) {
   );
 }
 
+const VIEW_OPTIONS = [
+  { key: "front", label: "Front" },
+  { key: "back", label: "Back" },
+  { key: "top", label: "Top" },
+  { key: "bottom", label: "Bottom" },
+  { key: "side", label: "Side" },
+  { key: "isometric", label: "Isometric" },
+  { key: "shaft", label: "Shaft" },
+  { key: "reset", label: "Reset" },
+];
+
+function ViewButton({ label, isActive, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        height: 36,
+        borderRadius: 8,
+        border: `1px solid ${isActive ? "#5f87b8" : "#2a3040"}`,
+        background: isActive ? "#1d2c41" : "#11141a",
+        color: "#eef2f7",
+        cursor: "pointer",
+        fontSize: 13,
+        fontWeight: 600,
+        transition: "background 120ms ease, border-color 120ms ease",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function ViewsPanel({ activeViewKey, onSelect }) {
+  return (
+    <Card title="Views">
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+          gap: 8,
+        }}
+      >
+        {VIEW_OPTIONS.map((view) => (
+          <ViewButton
+            key={view.key}
+            label={view.label}
+            isActive={activeViewKey === view.key}
+            onClick={() => onSelect(view.key)}
+          />
+        ))}
+      </div>
+
+      <div
+        style={{
+          marginTop: 10,
+          fontSize: 12,
+          lineHeight: 1.5,
+          color: "#9fabc0",
+        }}
+      >
+        Preset camera snaps around the propeller center. Axial views follow the
+        z-axis shaft.
+      </div>
+    </Card>
+  );
+}
+
 function ValidationPanel({ results }) {
   const allPass = results.every((r) => r.pass);
 
@@ -572,6 +640,10 @@ export default function App() {
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth : 1280
   );
+  const [viewRequest, setViewRequest] = useState({
+    key: "reset",
+    nonce: 0,
+  });
 
   useEffect(() => {
     const handleResize = () => {
@@ -622,6 +694,13 @@ export default function App() {
     }));
   };
 
+  const requestView = (key) => {
+    setViewRequest((prev) => ({
+      key,
+      nonce: prev.nonce + 1,
+    }));
+  };
+
   const validationResults = useMemo(() => runValidation(params), [params]);
   const probeFrame = useMemo(() => {
     return surfaceFrameFromUV(params, params.probeU, params.probeV);
@@ -635,8 +714,10 @@ export default function App() {
           ? "1fr"
           : `${sidebarWidth}px minmax(0, 1fr)`,
         gridTemplateRows: isStackedLayout ? "auto minmax(460px, 60vh)" : "1fr",
-        minHeight: "100vh",
         width: "100%",
+        minHeight: isStackedLayout ? "100vh" : "0",
+        height: isStackedLayout ? "auto" : "100vh",
+        overflow: isStackedLayout ? "visible" : "hidden",
         background: "#0b0d12",
         color: "#eef2f7",
         fontFamily:
@@ -648,8 +729,12 @@ export default function App() {
           padding: isStackedLayout ? 16 : 18,
           borderRight: isStackedLayout ? "none" : "1px solid #1d2230",
           borderBottom: isStackedLayout ? "1px solid #1d2230" : "none",
-          overflowY: isStackedLayout ? "visible" : "auto",
           background: "#0f1219",
+          minHeight: 0,
+          height: isStackedLayout ? "auto" : "100vh",
+          overflowY: isStackedLayout ? "visible" : "auto",
+          overflowX: "hidden",
+          WebkitOverflowScrolling: "touch",
         }}
       >
         <ProjectHeader compact={isStackedLayout} />
@@ -701,6 +786,11 @@ export default function App() {
             format={(v) => `${v.toFixed(0)}°`}
           />
         </Card>
+
+        <ViewsPanel
+          activeViewKey={viewRequest.key}
+          onSelect={requestView}
+        />
 
         <Card title="Appearance + motion">
           <ControlRow
@@ -804,15 +894,25 @@ export default function App() {
       <main
         style={{
           position: "relative",
-          minHeight: isStackedLayout ? 460 : "100vh",
+          minHeight: isStackedLayout ? 460 : 0,
           height: isStackedLayout ? "60vh" : "100vh",
+          overflow: "hidden",
         }}
       >
         <Canvas
           style={{ width: "100%", height: "100%" }}
-          camera={{ position: [4.4, 3.4, 5.2], fov: 50, near: 0.1, far: 100 }}
+          camera={{
+            position: [0.0, 5.2, 0.0],
+            up: [0, 0, 1],
+            fov: 80,
+            near: 0.1,
+            far: 100,
+          }}
         >
-          <PropellerScene params={params} />
+          <PropellerScene
+            params={params}
+            viewRequest={viewRequest}
+          />
         </Canvas>
 
         <div

@@ -9,7 +9,7 @@ export const paramRanges = {
 
 export const defaultParams = {
   // Core parametric blade controls
-  n: 1,
+  n: 2.4,
   rMin: 0.05,
   rMax: 2.0,
   bMin: -90,
@@ -17,8 +17,8 @@ export const defaultParams = {
 
   // Visual controls
   gridOpacity: 0.35,
-  blade1Color: "#7ec8e3",
-  blade2Color: "#ff8fab",
+  blade1Color: "#4F7F93",
+  blade2Color: "#8C5E66",
 
   // Inspection controls
   showProbe: true,
