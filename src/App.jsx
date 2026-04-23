@@ -4,6 +4,7 @@ import "./App.css";
 import {
   defaultParams,
   paramRanges,
+  sceneDefaults,
   validationConfig,
 } from "./config/defaultParams";
 import PropellerScene from "./scene/PropellerScene";
@@ -486,8 +487,8 @@ function ViewsPanel({ activeViewKey, onSelect }) {
           color: "#9fabc0",
         }}
       >
-        Preset camera snaps around the propeller center. Axial views follow the
-        z-axis shaft.
+        Preset snaps orbit around the propeller center. Reset returns to the
+        default inspection view, and shaft keeps the z-axis reference explicit.
       </div>
     </Card>
   );
@@ -613,7 +614,7 @@ export default function App() {
     typeof window !== "undefined" ? window.innerWidth : 1280
   );
   const [viewRequest, setViewRequest] = useState({
-    key: "reset",
+    key: sceneDefaults.startupView,
     nonce: 0,
   });
 
@@ -684,9 +685,9 @@ export default function App() {
           <Canvas
             style={{ width: "100%", height: "100%" }}
             camera={{
-              position: [0.0, 5.2, 0.0],
+              position: [4.8, 3.9, 3.0],
               up: [0, 0, 1],
-              fov: 80,
+              fov: sceneDefaults.cameraFov,
               near: 0.1,
               far: 100,
             }}
