@@ -235,7 +235,7 @@ function ProjectHeader({ compact = false }) {
 
       <p
         style={{
-          margin: "0 0 12px 0",
+          margin: 0,
           fontSize: compact ? 14 : 15,
           lineHeight: 1.6,
           color: "#d9e1ec",
@@ -244,35 +244,6 @@ function ProjectHeader({ compact = false }) {
         Rooster Labs brings together legacy invention, enduring mathematical
         insight, and modern interactive 3D tools across three generations to
         bring a pre-digital propeller concept back to life.
-      </p>
-
-      <div
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "6px 10px",
-          borderRadius: 999,
-          background: "rgba(112, 139, 186, 0.12)",
-          border: "1px solid rgba(120, 150, 195, 0.22)",
-          color: "#aab8d0",
-          fontSize: 12,
-          fontWeight: 600,
-        }}
-      >
-        Current build: Stage 5 — Parametric Domain + Surface Inspection
-      </div>
-
-      <p
-        style={{
-          margin: "12px 0 0 0",
-          fontSize: 12.5,
-          lineHeight: 1.55,
-          color: "#97a6bf",
-        }}
-      >
-        Exact sampled parametric surface with editable radial span, editable
-        angular window, live probe inspection, and rotational motion controls.
       </p>
     </div>
   );
@@ -722,8 +693,6 @@ export default function App() {
           >
             <PropellerScene params={params} viewRequest={viewRequest} />
           </Canvas>
-
-          
         </div>
       </main>
 
