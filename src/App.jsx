@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Canvas } from "@react-three/fiber";
+import "./App.css";
 import {
   defaultParams,
   paramRanges,
@@ -654,8 +655,7 @@ export default function App() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const isStackedLayout = viewportWidth < 900;
-  const sidebarWidth = viewportWidth < 1180 ? 400 : 430;
+  const isMobileLayout = viewportWidth < 900;
 
   const updateParam = (key, value) => {
     setParams((prev) => {
@@ -707,252 +707,179 @@ export default function App() {
   }, [params]);
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: isStackedLayout
-          ? "1fr"
-          : `${sidebarWidth}px minmax(0, 1fr)`,
-        gridTemplateRows: isStackedLayout ? "auto minmax(460px, 60vh)" : "1fr",
-        width: "100%",
-        minHeight: isStackedLayout ? "100vh" : "0",
-        height: isStackedLayout ? "auto" : "100vh",
-        overflow: isStackedLayout ? "visible" : "hidden",
-        background: "#0b0d12",
-        color: "#eef2f7",
-        fontFamily:
-          'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-      }}
-    >
-      <aside
-        style={{
-          padding: isStackedLayout ? 16 : 18,
-          borderRight: isStackedLayout ? "none" : "1px solid #1d2230",
-          borderBottom: isStackedLayout ? "1px solid #1d2230" : "none",
-          background: "#0f1219",
-          minHeight: 0,
-          height: isStackedLayout ? "auto" : "100vh",
-          overflowY: isStackedLayout ? "visible" : "auto",
-          overflowX: "hidden",
-          WebkitOverflowScrolling: "touch",
-        }}
-      >
-        <ProjectHeader compact={isStackedLayout} />
+    <div className="app-shell">
+      <main className="viewer-panel">
+        <div className="viewer-stage">
+          <Canvas
+            style={{ width: "100%", height: "100%" }}
+            camera={{
+              position: [0.0, 5.2, 0.0],
+              up: [0, 0, 1],
+              fov: 80,
+              near: 0.1,
+              far: 100,
+            }}
+          >
+            <PropellerScene params={params} viewRequest={viewRequest} />
+          </Canvas>
 
-        <Card title="Geometry domain">
-          <PropFormControl
-            value={params.n}
-            onSliderChange={(value) => updateParam("n", value)}
-            onInputChange={updateNFromInput}
-          />
-
-          <ControlRow
-            label="Root radius (rMin)"
-            value={params.rMin}
-            min={paramRanges.r.min}
-            max={paramRanges.r.max - paramRanges.r.minSpan}
-            step={paramRanges.r.step}
-            onChange={(value) => updateParam("rMin", value)}
-            format={(v) => v.toFixed(2)}
-          />
-
-          <ControlRow
-            label="Tip radius (rMax)"
-            value={params.rMax}
-            min={params.rMin + paramRanges.r.minSpan}
-            max={paramRanges.r.max}
-            step={paramRanges.r.step}
-            onChange={(value) => updateParam("rMax", value)}
-            format={(v) => v.toFixed(2)}
-          />
-
-          <ControlRow
-            label="bMin"
-            value={params.bMin}
-            min={paramRanges.b.min}
-            max={paramRanges.b.max - paramRanges.b.minSpan}
-            step={paramRanges.b.step}
-            onChange={(value) => updateParam("bMin", value)}
-            format={(v) => `${v.toFixed(0)}°`}
-          />
-
-          <ControlRow
-            label="bMax"
-            value={params.bMax}
-            min={params.bMin + paramRanges.b.minSpan}
-            max={paramRanges.b.max}
-            step={paramRanges.b.step}
-            onChange={(value) => updateParam("bMax", value)}
-            format={(v) => `${v.toFixed(0)}°`}
-          />
-        </Card>
-
-        <ViewsPanel
-          activeViewKey={viewRequest.key}
-          onSelect={requestView}
-        />
-
-        <Card title="Appearance + motion">
-          <ControlRow
-            label="Grid opacity"
-            value={params.gridOpacity}
-            min={paramRanges.gridOpacity.min}
-            max={paramRanges.gridOpacity.max}
-            step={paramRanges.gridOpacity.step}
-            onChange={(value) => updateParam("gridOpacity", value)}
-            format={(v) => v.toFixed(2)}
-          />
-
-          <ColorRow
-            label="Blade 1 color"
-            value={params.blade1Color}
-            onChange={(value) => updateParam("blade1Color", value)}
-          />
-
-          <ColorRow
-            label="Blade 2 color"
-            value={params.blade2Color}
-            onChange={(value) => updateParam("blade2Color", value)}
-          />
-
-          <ControlRow
-            label="RPM"
-            value={params.rpm}
-            min={paramRanges.rpm.min}
-            max={paramRanges.rpm.max}
-            step={paramRanges.rpm.step}
-            onChange={(value) => updateParam("rpm", value)}
-            format={(v) => `${v.toFixed(0)} rpm`}
-          />
-
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ marginBottom: 6, fontSize: 13, color: "#b7c0d0" }}>
-              angular speed:{" "}
-              <strong>{rpmToRadPerSec(params.rpm).toFixed(3)} rad/s</strong>
-            </div>
-            <ToggleButton isRunning={params.isRunning} onToggle={toggleRunning} />
-          </div>
-        </Card>
-
-        <Card title="Surface inspection">
-          <CheckboxRow
-            label="Show probe"
-            checked={params.showProbe}
-            onChange={(value) => updateParam("showProbe", value)}
-            hint="Probe is drawn on blade 1 and rotates with the assembly."
-          />
-
-          <CheckboxRow
-            label="Show constant-r iso-curve"
-            checked={params.showIsoR}
-            onChange={(value) => updateParam("showIsoR", value)}
-            hint="Highlights the current probe radius across the angular domain."
-          />
-
-          <CheckboxRow
-            label="Show constant-b iso-line"
-            checked={params.showIsoB}
-            onChange={(value) => updateParam("showIsoB", value)}
-            hint="Highlights the current probe angle across the radial span."
-          />
-
-          <ControlRow
-            label="Probe radial position"
-            value={params.probeU}
-            min={paramRanges.probe.min}
-            max={paramRanges.probe.max}
-            step={paramRanges.probe.step}
-            onChange={(value) => updateParam("probeU", value)}
-            format={(v) => `${(v * 100).toFixed(0)}%`}
-          />
-
-          <ControlRow
-            label="Probe angular position"
-            value={params.probeV}
-            min={paramRanges.probe.min}
-            max={paramRanges.probe.max}
-            step={paramRanges.probe.step}
-            onChange={(value) => updateParam("probeV", value)}
-            format={(v) => `${(v * 100).toFixed(0)}%`}
-          />
-
-          <ControlRow
-            label="Probe vector scale"
-            value={params.probeVectorScale}
-            min={0.1}
-            max={1.2}
-            step={0.01}
-            onChange={(value) => updateParam("probeVectorScale", value)}
-            format={(v) => v.toFixed(2)}
-          />
-        </Card>
-
-        <ProbeReadout frame={probeFrame} />
-        <ValidationPanel results={validationResults} />
-      </aside>
-
-      <main
-        style={{
-          position: "relative",
-          minHeight: isStackedLayout ? 460 : 0,
-          height: isStackedLayout ? "60vh" : "100vh",
-          overflow: "hidden",
-        }}
-      >
-        <Canvas
-          style={{ width: "100%", height: "100%" }}
-          camera={{
-            position: [0.0, 5.2, 0.0],
-            up: [0, 0, 1],
-            fov: 80,
-            near: 0.1,
-            far: 100,
-          }}
-        >
-          <PropellerScene
-            params={params}
-            viewRequest={viewRequest}
-          />
-        </Canvas>
-
-        <div
-          style={{
-            position: "absolute",
-            right: isStackedLayout ? 12 : 16,
-            left: isStackedLayout ? 12 : "auto",
-            top: isStackedLayout ? 12 : 16,
-            maxWidth: isStackedLayout ? "none" : 330,
-            background: "rgba(12,14,20,0.82)",
-            border: "1px solid rgba(255,255,255,0.08)",
-            borderRadius: 10,
-            padding: "10px 12px",
-            fontSize: 12,
-            color: "#d6dce8",
-            lineHeight: 1.5,
-            pointerEvents: "none",
-          }}
-        >
-          <div>
-            <strong>Rooster Labs</strong>
-          </div>
-          <div>Parametric Propeller Viewer</div>
-          <div style={{ color: "#9fb0ca" }}>
-            Stage 5 — Parametric Domain + Surface Inspection
-          </div>
-          <div>
-            Domain: r {params.rMin.toFixed(2)} → {params.rMax.toFixed(2)}, b{" "}
-            {params.bMin.toFixed(0)}° → {params.bMax.toFixed(0)}°
-          </div>
-          <div>
-            Probe: r {probeFrame.r.toFixed(2)}, b {probeFrame.bDeg.toFixed(1)}°
-          </div>
-          <div>
-            {params.isRunning
-              ? `Running at ${params.rpm.toFixed(0)} rpm`
-              : "Stopped"}
-          </div>
+          
         </div>
       </main>
+
+      <aside className="control-panel">
+        <div className="control-panel__scroll">
+          <ProjectHeader compact={isMobileLayout} />
+
+          <Card title="Geometry domain">
+            <PropFormControl
+              value={params.n}
+              onSliderChange={(value) => updateParam("n", value)}
+              onInputChange={updateNFromInput}
+            />
+
+            <ControlRow
+              label="Root radius (rMin)"
+              value={params.rMin}
+              min={paramRanges.r.min}
+              max={paramRanges.r.max - paramRanges.r.minSpan}
+              step={paramRanges.r.step}
+              onChange={(value) => updateParam("rMin", value)}
+              format={(v) => v.toFixed(2)}
+            />
+
+            <ControlRow
+              label="Tip radius (rMax)"
+              value={params.rMax}
+              min={params.rMin + paramRanges.r.minSpan}
+              max={paramRanges.r.max}
+              step={paramRanges.r.step}
+              onChange={(value) => updateParam("rMax", value)}
+              format={(v) => v.toFixed(2)}
+            />
+
+            <ControlRow
+              label="bMin"
+              value={params.bMin}
+              min={paramRanges.b.min}
+              max={paramRanges.b.max - paramRanges.b.minSpan}
+              step={paramRanges.b.step}
+              onChange={(value) => updateParam("bMin", value)}
+              format={(v) => `${v.toFixed(0)}°`}
+            />
+
+            <ControlRow
+              label="bMax"
+              value={params.bMax}
+              min={params.bMin + paramRanges.b.minSpan}
+              max={paramRanges.b.max}
+              step={paramRanges.b.step}
+              onChange={(value) => updateParam("bMax", value)}
+              format={(v) => `${v.toFixed(0)}°`}
+            />
+          </Card>
+
+          <ViewsPanel activeViewKey={viewRequest.key} onSelect={requestView} />
+
+          <Card title="Appearance + motion">
+            <ControlRow
+              label="Grid opacity"
+              value={params.gridOpacity}
+              min={paramRanges.gridOpacity.min}
+              max={paramRanges.gridOpacity.max}
+              step={paramRanges.gridOpacity.step}
+              onChange={(value) => updateParam("gridOpacity", value)}
+              format={(v) => v.toFixed(2)}
+            />
+
+            <ColorRow
+              label="Blade 1 color"
+              value={params.blade1Color}
+              onChange={(value) => updateParam("blade1Color", value)}
+            />
+
+            <ColorRow
+              label="Blade 2 color"
+              value={params.blade2Color}
+              onChange={(value) => updateParam("blade2Color", value)}
+            />
+
+            <ControlRow
+              label="RPM"
+              value={params.rpm}
+              min={paramRanges.rpm.min}
+              max={paramRanges.rpm.max}
+              step={paramRanges.rpm.step}
+              onChange={(value) => updateParam("rpm", value)}
+              format={(v) => `${v.toFixed(0)} rpm`}
+            />
+
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ marginBottom: 6, fontSize: 13, color: "#b7c0d0" }}>
+                angular speed:{" "}
+                <strong>{rpmToRadPerSec(params.rpm).toFixed(3)} rad/s</strong>
+              </div>
+              <ToggleButton isRunning={params.isRunning} onToggle={toggleRunning} />
+            </div>
+          </Card>
+
+          <Card title="Surface inspection">
+            <CheckboxRow
+              label="Show probe"
+              checked={params.showProbe}
+              onChange={(value) => updateParam("showProbe", value)}
+              hint="Probe is drawn on blade 1 and rotates with the assembly."
+            />
+
+            <CheckboxRow
+              label="Show constant-r iso-curve"
+              checked={params.showIsoR}
+              onChange={(value) => updateParam("showIsoR", value)}
+              hint="Highlights the current probe radius across the angular domain."
+            />
+
+            <CheckboxRow
+              label="Show constant-b iso-line"
+              checked={params.showIsoB}
+              onChange={(value) => updateParam("showIsoB", value)}
+              hint="Highlights the current probe angle across the radial span."
+            />
+
+            <ControlRow
+              label="Probe radial position"
+              value={params.probeU}
+              min={paramRanges.probe.min}
+              max={paramRanges.probe.max}
+              step={paramRanges.probe.step}
+              onChange={(value) => updateParam("probeU", value)}
+              format={(v) => `${(v * 100).toFixed(0)}%`}
+            />
+
+            <ControlRow
+              label="Probe angular position"
+              value={params.probeV}
+              min={paramRanges.probe.min}
+              max={paramRanges.probe.max}
+              step={paramRanges.probe.step}
+              onChange={(value) => updateParam("probeV", value)}
+              format={(v) => `${(v * 100).toFixed(0)}%`}
+            />
+
+            <ControlRow
+              label="Probe vector scale"
+              value={params.probeVectorScale}
+              min={0.1}
+              max={1.2}
+              step={0.01}
+              onChange={(value) => updateParam("probeVectorScale", value)}
+              format={(v) => v.toFixed(2)}
+            />
+          </Card>
+
+          <ProbeReadout frame={probeFrame} />
+          <ValidationPanel results={validationResults} />
+        </div>
+      </aside>
     </div>
   );
 }
