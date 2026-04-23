@@ -1,6 +1,15 @@
 import React, { useEffect, useMemo } from "react";
 import * as THREE from "three";
 
+function deriveReadableTones(color) {
+  const base = new THREE.Color(color);
+  const front = base.clone().lerp(new THREE.Color("#ffffff"), 0.08);
+  const back = base.clone().multiplyScalar(0.68);
+  const edge = base.clone().multiplyScalar(0.48);
+
+  return { front, back, edge };
+}
+
 /**
  * Pure rendering component for one blade mesh.
  * Geometry is passed in from the assembly so both blades
@@ -20,6 +29,8 @@ export default function BladeSurfaceMesh({
     return new THREE.EdgesGeometry(geometry, 35);
   }, [geometry]);
 
+  const tones = useMemo(() => deriveReadableTones(color), [color]);
+
   useEffect(() => {
     return () => {
       boundaryEdges.dispose();
@@ -28,20 +39,31 @@ export default function BladeSurfaceMesh({
 
   return (
     <group rotation={[0, 0, rotationZ]}>
-      <mesh geometry={geometry}>
+      <mesh geometry={geometry} renderOrder={1}>
         <meshStandardMaterial
-          color={color}
-          side={THREE.DoubleSide}
-          roughness={0.42}
-          metalness={0.04}
+          color={tones.back}
+          side={THREE.BackSide}
+          roughness={0.68}
+          metalness={0.02}
         />
       </mesh>
 
-      <lineSegments geometry={boundaryEdges}>
+      <mesh geometry={geometry} renderOrder={2}>
+        <meshStandardMaterial
+          color={tones.front}
+          side={THREE.FrontSide}
+          roughness={0.54}
+          metalness={0.03}
+        />
+      </mesh>
+
+      <lineSegments geometry={boundaryEdges} renderOrder={3}>
         <lineBasicMaterial
-          color={color}
+          color={tones.edge}
           depthTest
           toneMapped={false}
+          transparent
+          opacity={0.95}
         />
       </lineSegments>
     </group>
