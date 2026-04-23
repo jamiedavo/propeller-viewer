@@ -16,21 +16,26 @@ export const defaultParams = {
   bMax: 90,
 
   // Visual controls
-  gridOpacity: 0.35,
-  blade1Color: "#4F7F93",
-  blade2Color: "#8C5E66",
+  gridOpacity: 0.22,
+  blade1Color: "#5f8fa6",
+  blade2Color: "#9a6771",
 
   // Inspection controls
   showProbe: true,
-  showIsoR: true,
+  showIsoR: false,
   showIsoB: false,
   probeU: 0.72,
   probeV: 0.66,
-  probeVectorScale: 0.38,
+  probeVectorScale: 0.32,
 
   // Motion controls
   rpm: 60,
   isRunning: false,
+};
+
+export const sceneDefaults = {
+  startupView: "isometric",
+  cameraFov: 64,
 };
 
 export const validationConfig = {
