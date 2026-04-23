@@ -6,22 +6,39 @@ import BladeAssembly from "./BladeAssembly";
 import SceneAxes from "./SceneAxes";
 import ShaftReference from "./ShaftReference";
 
-function getViewPreset(viewKey, rMax) {
-  const lateralDistance = Math.max(5.2, rMax * 2.8);
-  const axialDistance = Math.max(4.8, rMax * 2.35);
-  const shaftDistance = Math.max(3.2, rMax * 1.55);
+function getViewMetrics(rMax, bMin, bMax) {
+  const bMinRad = THREE.MathUtils.degToRad(bMin);
+  const bMaxRad = THREE.MathUtils.degToRad(bMax);
+  const tipRadius = Math.max(0.25, rMax);
+  const maxHeight =
+    tipRadius * Math.max(Math.abs(Math.sin(bMinRad)), Math.abs(Math.sin(bMaxRad)));
+  const framingRadius = Math.max(1.9, tipRadius + maxHeight * 0.75);
+
+  return {
+    lateralDistance: Math.max(5.6, framingRadius * 2.45),
+    axialDistance: Math.max(4.8, framingRadius * 2.1),
+    shaftDistance: Math.max(4.1, framingRadius * 1.7),
+  };
+}
+
+function getViewPreset(viewKey, rMax, bMin, bMax) {
+  const { lateralDistance, axialDistance, shaftDistance } = getViewMetrics(
+    rMax,
+    bMin,
+    bMax
+  );
 
   switch (viewKey) {
     case "front":
       return {
-        position: new THREE.Vector3(0, lateralDistance, 0),
+        position: new THREE.Vector3(0, lateralDistance, 0.3),
         target: new THREE.Vector3(0, 0, 0),
         up: new THREE.Vector3(0, 0, 1),
       };
 
     case "back":
       return {
-        position: new THREE.Vector3(0, -lateralDistance, 0),
+        position: new THREE.Vector3(0, -lateralDistance, 0.3),
         target: new THREE.Vector3(0, 0, 0),
         up: new THREE.Vector3(0, 0, 1),
       };
@@ -42,7 +59,7 @@ function getViewPreset(viewKey, rMax) {
 
     case "side":
       return {
-        position: new THREE.Vector3(lateralDistance, 0, 0),
+        position: new THREE.Vector3(lateralDistance, 0, 0.25),
         target: new THREE.Vector3(0, 0, 0),
         up: new THREE.Vector3(0, 0, 1),
       };
@@ -50,9 +67,9 @@ function getViewPreset(viewKey, rMax) {
     case "isometric":
       return {
         position: new THREE.Vector3(
-          lateralDistance * 0.82,
-          lateralDistance * 0.82,
-          lateralDistance * 0.62
+          lateralDistance * 0.94,
+          lateralDistance * 0.78,
+          lateralDistance * 0.58
         ),
         target: new THREE.Vector3(0, 0, 0),
         up: new THREE.Vector3(0, 0, 1),
@@ -60,7 +77,7 @@ function getViewPreset(viewKey, rMax) {
 
     case "shaft":
       return {
-        position: new THREE.Vector3(0, 0, shaftDistance),
+        position: new THREE.Vector3(0.45, 0, shaftDistance),
         target: new THREE.Vector3(0, 0, 0),
         up: new THREE.Vector3(0, 1, 0),
       };
@@ -68,14 +85,18 @@ function getViewPreset(viewKey, rMax) {
     case "reset":
     default:
       return {
-        position: new THREE.Vector3(0, 5.2, 0),
+        position: new THREE.Vector3(
+          lateralDistance * 0.94,
+          lateralDistance * 0.78,
+          lateralDistance * 0.58
+        ),
         target: new THREE.Vector3(0, 0, 0),
         up: new THREE.Vector3(0, 0, 1),
       };
   }
 }
 
-function CameraSnapController({ controlsRef, viewRequest, rMax }) {
+function CameraSnapController({ controlsRef, viewRequest, rMax, bMin, bMax }) {
   const { camera } = useThree();
 
   const hasInitializedRef = useRef(false);
@@ -92,7 +113,7 @@ function CameraSnapController({ controlsRef, viewRequest, rMax }) {
       return;
     }
 
-    const initialPreset = getViewPreset("reset", rMax);
+    const initialPreset = getViewPreset("reset", rMax, bMin, bMax);
 
     camera.position.copy(initialPreset.position);
     camera.up.copy(initialPreset.up).normalize();
@@ -101,20 +122,20 @@ function CameraSnapController({ controlsRef, viewRequest, rMax }) {
     controls.update();
 
     hasInitializedRef.current = true;
-  }, [camera, controlsRef, rMax]);
+  }, [camera, controlsRef, rMax, bMin, bMax]);
 
   useEffect(() => {
     if (!viewRequest || viewRequest.nonce === 0) {
       return;
     }
 
-    const preset = getViewPreset(viewRequest.key, rMax);
+    const preset = getViewPreset(viewRequest.key, rMax, bMin, bMax);
 
     desiredPositionRef.current.copy(preset.position);
     desiredTargetRef.current.copy(preset.target);
     desiredUpRef.current.copy(preset.up).normalize();
     isAnimatingRef.current = true;
-  }, [viewRequest]);
+  }, [viewRequest, rMax, bMin, bMax]);
 
   useFrame((_, delta) => {
     if (!isAnimatingRef.current) {
@@ -179,21 +200,26 @@ export default function PropellerScene({ params, viewRequest }) {
     isRunning,
   } = params;
 
-  const axisLength = Math.max(3.5, rMax + 1.25);
-  const shaftLength = Math.max(5, rMax * 3);
+  const axisLength = Math.max(4.2, rMax + 1.35);
+  const shaftLength = Math.max(6.2, rMax * 3.4);
+  const gridSize = Math.max(10, rMax * 5.5);
+  const gridDivisions = Math.max(10, Math.round(gridSize));
   const controlsRef = useRef(null);
 
   return (
     <>
-      <color attach="background" args={["#0f1115"]} />
+      <color attach="background" args={["#0e1118"]} />
 
-      <ambientLight intensity={0.7} />
-      <directionalLight position={[5, 6, 4]} intensity={1.15} />
-      <directionalLight position={[-4, -2, 3]} intensity={0.55} />
-      <directionalLight position={[0, 0, 6]} intensity={0.35} />
+      <ambientLight intensity={0.48} />
+      <hemisphereLight
+        args={["#b8d6ff", "#05070b", 0.72]}
+      />
+      <directionalLight position={[5, 6, 5]} intensity={1.05} />
+      <directionalLight position={[-5, 2, 3.5]} intensity={0.45} />
+      <directionalLight position={[0, -6, 2.75]} intensity={0.28} />
 
       <gridHelper
-        args={[10, 10, "#444444", "#222222"]}
+        args={[gridSize, gridDivisions, "#3e4656", "#1b2230"]}
         material-transparent
         material-opacity={gridOpacity}
         material-depthWrite={false}
@@ -224,12 +250,17 @@ export default function PropellerScene({ params, viewRequest }) {
         controlsRef={controlsRef}
         viewRequest={viewRequest}
         rMax={rMax}
+        bMin={bMin}
+        bMax={bMax}
       />
 
       <OrbitControls
         ref={controlsRef}
         enableDamping
         dampingFactor={0.08}
+        enablePan={false}
+        minDistance={Math.max(2.2, rMax * 0.95)}
+        maxDistance={Math.max(16, rMax * 8)}
         target={[0, 0, 0]}
       />
     </>
