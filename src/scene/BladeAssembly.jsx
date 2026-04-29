@@ -9,8 +9,9 @@ import DebugCurve from "./DebugCurve";
 import ProbePoint from "./ProbePoint";
 
 /**
- * Two-blade rotating assembly.
- * Blade 2 is blade 1 rotated by Math.PI about z.
+ * Rotating blade assembly.
+ * Each blade is an identical rendered instance of the original parametric surface,
+ * evenly rotated around the z-axis.
  */
 export default function BladeAssembly({
   rMin,
@@ -18,9 +19,9 @@ export default function BladeAssembly({
   n,
   bMin,
   bMax,
+  bladeCount,
   blade1Color,
   blade2Color,
-  bladeOpacity,
   showProbe,
   showIsoR,
   showIsoB,
@@ -74,6 +75,17 @@ export default function BladeAssembly({
     return geometry;
   }, [rMin, rMax, n, bMin, bMax]);
 
+  const bladeInstances = useMemo(() => {
+    const safeBladeCount = Math.max(2, Math.min(6, Math.round(Number(bladeCount) || 2)));
+    const angleStep = (Math.PI * 2) / safeBladeCount;
+
+    return Array.from({ length: safeBladeCount }, (_, index) => ({
+      index,
+      rotationZ: index * angleStep,
+      color: index === 0 ? blade1Color : blade2Color,
+    }));
+  }, [bladeCount, blade1Color, blade2Color]);
+
   useEffect(() => {
     return () => {
       sharedGeometry.dispose();
@@ -84,19 +96,14 @@ export default function BladeAssembly({
 
   return (
     <group ref={assemblyRef}>
-      <BladeSurfaceMesh
-        geometry={sharedGeometry}
-        color={blade1Color}
-        opacity={bladeOpacity}
-        rotationZ={0}
-      />
-
-      <BladeSurfaceMesh
-        geometry={sharedGeometry}
-        color={blade2Color}
-        opacity={bladeOpacity}
-        rotationZ={Math.PI}
-      />
+      {bladeInstances.map((blade) => (
+        <BladeSurfaceMesh
+          key={`blade-${blade.index}`}
+          geometry={sharedGeometry}
+          color={blade.color}
+          rotationZ={blade.rotationZ}
+        />
+      ))}
 
       {showIsoR && (
         <DebugCurve
