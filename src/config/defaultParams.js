@@ -1,5 +1,6 @@
 export const paramRanges = {
   n: { min: -6, max: 6, step: 0.01 },
+  bladeCount: { min: 2, max: 6, step: 1, options: [2, 3, 4, 5, 6] },
   r: { min: 0.05, max: 3.0, step: 0.01, minSpan: 0.05 },
   b: { min: -90, max: 90, step: 1, minSpan: 2 },
   gridOpacity: { min: 0, max: 1, step: 0.01 },
@@ -14,6 +15,9 @@ export const defaultParams = {
   rMax: 2.0,
   bMin: -90,
   bMax: 90,
+
+  // Blade arrangement controls
+  bladeCount: 2,
 
   // Visual controls
   gridOpacity: 0.22,
