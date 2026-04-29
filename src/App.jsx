@@ -18,6 +18,35 @@ import {
   surfacePoint,
 } from "./geometry/surfaceMath";
 
+const cardStyle = {
+  background: "#171a21",
+  border: "1px solid #2a3040",
+  borderRadius: 10,
+  padding: 14,
+  marginBottom: 16,
+};
+
+const fieldStyle = {
+  width: "100%",
+  height: 38,
+  border: "1px solid #2a3040",
+  borderRadius: 8,
+  background: "#11141a",
+  color: "#eef2f7",
+  padding: "0 10px",
+  fontSize: 14,
+  boxSizing: "border-box",
+};
+
+const labelRowStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: 6,
+  fontSize: 13,
+  color: "#eef2f7",
+};
+
 function approximatelyEqual(a, b, epsilon = 1e-6) {
   return Math.abs(a - b) <= epsilon;
 }
@@ -48,6 +77,7 @@ function runValidation(params) {
     n,
     bMin,
     bMax,
+    bladeCount,
     gridOpacity,
     blade1Color,
     blade2Color,
@@ -58,7 +88,6 @@ function runValidation(params) {
   } = params;
 
   const results = [];
-
   let drawingLogicPass = true;
 
   for (const bDeg of drawingMatchSampleDegrees) {
@@ -79,6 +108,15 @@ function runValidation(params) {
   results.push({
     label: "Special case n = 1 still matches the original drawing logic",
     pass: drawingLogicPass,
+  });
+
+  results.push({
+    label: "Blade count is within experimental range: 2 to 6",
+    pass:
+      Number.isInteger(bladeCount) &&
+      bladeCount >= paramRanges.bladeCount.min &&
+      bladeCount <= paramRanges.bladeCount.max,
+    detail: `${bladeCount} blades, ${Math.round(360 / bladeCount)}° apart`,
   });
 
   results.push({
@@ -159,7 +197,7 @@ function runValidation(params) {
   results.push({
     label: "Blade colors are valid hex values",
     pass: hexColorIsValid(blade1Color) && hexColorIsValid(blade2Color),
-    detail: `blade 1 = ${blade1Color}, blade 2 = ${blade2Color}`,
+    detail: `blade 1 = ${blade1Color}, remaining blades = ${blade2Color}`,
   });
 
   results.push({
@@ -179,15 +217,7 @@ function runValidation(params) {
 
 function Card({ title, children }) {
   return (
-    <div
-      style={{
-        background: "#171a21",
-        border: "1px solid #2a3040",
-        borderRadius: 10,
-        padding: 14,
-        marginBottom: 16,
-      }}
-    >
+    <div style={cardStyle}>
       <strong style={{ display: "block", marginBottom: 12, color: "#f3f6fb" }}>
         {title}
       </strong>
@@ -261,15 +291,7 @@ function ControlRow({
 }) {
   return (
     <div style={{ marginBottom: 14 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          marginBottom: 6,
-          fontSize: 13,
-          color: "#eef2f7",
-        }}
-      >
+      <div style={labelRowStyle}>
         <span>{label}</span>
         <strong>{format(value)}</strong>
       </div>
@@ -287,19 +309,39 @@ function ControlRow({
   );
 }
 
+function SelectRow({ label, value, options, onChange, hint }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={labelRowStyle}>
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+
+      <select
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{ ...fieldStyle, cursor: "pointer" }}
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option} blades
+          </option>
+        ))}
+      </select>
+
+      {hint && (
+        <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.45, color: "#aab3c2" }}>
+          {hint}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PropFormControl({ value, onSliderChange, onInputChange }) {
   return (
     <div style={{ marginBottom: 14 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 6,
-          fontSize: 13,
-          color: "#eef2f7",
-        }}
-      >
+      <div style={labelRowStyle}>
         <span>Angular multiplier (n)</span>
         <strong>{value.toFixed(2)}</strong>
       </div>
@@ -321,17 +363,7 @@ function PropFormControl({ value, onSliderChange, onInputChange }) {
         step={paramRanges.n.step}
         value={value}
         onChange={(e) => onInputChange(e.target.value)}
-        style={{
-          width: "100%",
-          height: 38,
-          border: "1px solid #2a3040",
-          borderRadius: 8,
-          background: "#11141a",
-          color: "#eef2f7",
-          padding: "0 10px",
-          fontSize: 14,
-          boxSizing: "border-box",
-        }}
+        style={fieldStyle}
       />
     </div>
   );
@@ -340,16 +372,7 @@ function PropFormControl({ value, onSliderChange, onInputChange }) {
 function ColorRow({ label, value, onChange }) {
   return (
     <div style={{ marginBottom: 14 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 6,
-          fontSize: 13,
-          color: "#eef2f7",
-        }}
-      >
+      <div style={labelRowStyle}>
         <span>{label}</span>
         <strong>{value}</strong>
       </div>
@@ -462,13 +485,7 @@ function ViewButton({ label, isActive, onClick }) {
 function ViewsPanel({ activeViewKey, onSelect }) {
   return (
     <Card title="Views">
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-          gap: 8,
-        }}
-      >
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
         {VIEW_OPTIONS.map((view) => (
           <ViewButton
             key={view.key}
@@ -479,14 +496,7 @@ function ViewsPanel({ activeViewKey, onSelect }) {
         ))}
       </div>
 
-      <div
-        style={{
-          marginTop: 10,
-          fontSize: 12,
-          lineHeight: 1.5,
-          color: "#9fabc0",
-        }}
-      >
+      <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.5, color: "#9fabc0" }}>
         Preset snaps orbit around the propeller center. Reset returns to the
         default inspection view, and shaft keeps the z-axis reference explicit.
       </div>
@@ -498,22 +508,8 @@ function ValidationPanel({ results }) {
   const allPass = results.every((r) => r.pass);
 
   return (
-    <div
-      style={{
-        background: "#171a21",
-        border: "1px solid #2a3040",
-        borderRadius: 10,
-        padding: 14,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 10,
-        }}
-      >
+    <div style={cardStyle}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <strong style={{ fontSize: 14, color: "#f3f6fb" }}>Validation</strong>
         <span
           style={{
@@ -555,14 +551,7 @@ function ValidationPanel({ results }) {
             </div>
 
             {result.detail && (
-              <div
-                style={{
-                  marginTop: 6,
-                  fontSize: 12,
-                  color: "#aab3c2",
-                  paddingLeft: 26,
-                }}
-              >
+              <div style={{ marginTop: 6, fontSize: 12, color: "#aab3c2", paddingLeft: 26 }}>
                 {result.detail}
               </div>
             )}
@@ -708,6 +697,14 @@ export default function App() {
               onInputChange={updateNFromInput}
             />
 
+            <SelectRow
+              label="Blade count"
+              value={params.bladeCount}
+              options={paramRanges.bladeCount.options}
+              onChange={(value) => updateParam("bladeCount", value)}
+              hint="Each blade uses the same original parametric surface and is evenly rotated around the z-axis."
+            />
+
             <ControlRow
               label="Root radius (rMin)"
               value={params.rMin}
@@ -769,7 +766,7 @@ export default function App() {
             />
 
             <ColorRow
-              label="Blade 2 color"
+              label="Remaining blades color"
               value={params.blade2Color}
               onChange={(value) => updateParam("blade2Color", value)}
             />
