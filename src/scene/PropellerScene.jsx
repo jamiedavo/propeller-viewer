@@ -187,6 +187,7 @@ export default function PropellerScene({ params, viewRequest }) {
     n,
     bMin,
     bMax,
+    bladeCount,
     gridOpacity,
     blade1Color,
     blade2Color,
@@ -234,6 +235,7 @@ export default function PropellerScene({ params, viewRequest }) {
         n={n}
         bMin={bMin}
         bMax={bMax}
+        bladeCount={bladeCount}
         blade1Color={blade1Color}
         blade2Color={blade2Color}
         showProbe={showProbe}
