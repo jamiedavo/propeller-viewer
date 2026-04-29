@@ -158,6 +158,14 @@ export function clampSurfaceParams(params) {
 
   next.n = clamp(toNumber(next.n, 1), paramRanges.n.min, paramRanges.n.max);
 
+  next.bladeCount = Math.round(
+    clamp(
+      toNumber(next.bladeCount, 2),
+      paramRanges.bladeCount.min,
+      paramRanges.bladeCount.max
+    )
+  );
+
   next.gridOpacity = clamp(
     toNumber(next.gridOpacity, 0.35),
     paramRanges.gridOpacity.min,
