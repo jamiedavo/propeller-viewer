@@ -1,10 +1,6 @@
 /**
  * Governing Mathematical Utilities & Analytical Differential Geometry
- *
- * Governing Equations:
- *   x = r * cos(b) * cos(n * b)
- *   y = r * cos(b) * sin(n * b)
- *   z = r * sin(b)
+ * Fully supports millimeter scales and Dad's full -89° to +89° domain
  */
 
 export function degToRad(deg) {
@@ -57,9 +53,6 @@ export function normalize(v) {
   return scale(v, 1 / len);
 }
 
-/**
- * Evaluates the governing parametric surface point at (r, b [rad], n).
- */
 export function surfacePoint(r, b, n) {
   const cosB = Math.cos(b);
   const sinB = Math.sin(b);
@@ -74,9 +67,6 @@ export function surfacePoint(r, b, n) {
   };
 }
 
-/**
- * Analytical partial derivatives with respect to r and b.
- */
 export function surfaceDerivatives(r, b, n) {
   const cosB = Math.cos(b);
   const sinB = Math.sin(b);
@@ -84,14 +74,12 @@ export function surfaceDerivatives(r, b, n) {
   const cosNB = Math.cos(nb);
   const sinNB = Math.sin(nb);
 
-  // dS/dr
   const tangentR = {
     x: cosB * cosNB,
     y: cosB * sinNB,
     z: sinB,
   };
 
-  // dS/db
   const tangentB = {
     x: -r * (sinB * cosNB + n * cosB * sinNB),
     y: -r * (sinB * sinNB - n * cosB * cosNB),
@@ -101,9 +89,6 @@ export function surfaceDerivatives(r, b, n) {
   return { tangentR, tangentB };
 }
 
-/**
- * Exact analytical unit normal vector pointing toward suction/thrust face.
- */
 export function surfaceNormal(r, b, n) {
   const cosB = Math.cos(b);
   const sinB = Math.sin(b);
@@ -125,30 +110,18 @@ export function surfaceNormal(r, b, n) {
   };
 }
 
-/**
- * Cylindrical section pitch angle beta_cyl(b):
- * On a cylinder of radius rho = r*cos(b), z = rho*tan(theta/n).
- * tan(beta_cyl) = (dz/dtheta)/rho = 1 / (n * cos^2(b)).
- */
 export function cylindricalPitchAngleDeg(bRad, n) {
   const cosB = Math.cos(bRad);
   if (Math.abs(cosB) < 1e-6) return 90;
   return radToDeg(Math.atan(1 / (n * cosB * cosB)));
 }
 
-/**
- * Local geometric pitch on a cylindrical section:
- * P_cyl = 2 * pi * (dz/dtheta) = 2 * pi * rho / (n * cos^2(b)) = 2 * pi * r / (n * cos(b)).
- */
 export function cylindricalGeometricPitch(r, bRad, n) {
   const cosB = Math.cos(bRad);
   if (Math.abs(cosB) < 1e-6 || n <= 0) return 0;
   return (2 * Math.PI * r) / (n * cosB);
 }
 
-/**
- * Full differential frame at a specified (r, bDeg).
- */
 export function surfaceFrame(r, bDeg, n, vectorScale = 0.4) {
   const b = degToRad(bDeg);
   const pt = surfacePoint(r, b, n);
@@ -188,10 +161,14 @@ export function surfaceFrameFromUV(params, u, v) {
 }
 
 export function clampSurfaceParams(p) {
-  const rMin = Math.max(0.05, Math.min(p.rMin, p.rMax - 0.1));
-  const rMax = Math.max(rMin + 0.1, p.rMax);
-  const bMin = Math.max(0, Math.min(p.bMin, p.bMax - 2));
-  const bMax = Math.max(bMin + 2, Math.min(85, p.bMax));
+  // Clamping down to 5mm (0.005m)
+  const rMin = Math.max(0.005, Math.min(p.rMin, p.rMax - 0.01));
+  const rMax = Math.max(rMin + 0.01, Math.min(10.0, p.rMax));
+
+  // Clamping from -89 to +89
+  const bMin = Math.max(-89, Math.min(p.bMin, p.bMax - 1));
+  const bMax = Math.max(bMin + 1, Math.min(89, p.bMax));
+
   const n = Math.max(0.1, Math.min(4.0, p.n));
   const bladeCount = Math.max(1, Math.min(8, Math.round(p.bladeCount || 2)));
 
@@ -206,9 +183,6 @@ export function clampSurfaceParams(p) {
   };
 }
 
-/**
- * Aerodynamic and geometric metrics across the entire propeller domain.
- */
 export function calculateAeroMetrics(params) {
   const { rMin, rMax, bMin, bMax, n, bladeCount, rpm } = params;
 
@@ -233,12 +207,13 @@ export function calculateAeroMetrics(params) {
   const bladeArea = 0.5 * (rMax * rMax - rMin * rMin) * integralChord;
   const totalBladeArea = bladeArea * bladeCount;
 
-  const tipCylRadius = rMax * Math.cos(b0);
+  const maxCosB = (b0 <= 0 && b1 >= 0) ? 1.0 : Math.max(Math.cos(b0), Math.cos(b1));
+  const tipCylRadius = rMax * maxCosB;
   const diskArea = Math.PI * tipCylRadius * tipCylRadius;
   const ear = diskArea > 1e-6 ? totalBladeArea / diskArea : 0;
 
-  const minPitchAngleDeg = cylindricalPitchAngleDeg(b0, n);
-  const maxPitchAngleDeg = cylindricalPitchAngleDeg(b1, n);
+  const minPitchAngleDeg = cylindricalPitchAngleDeg(Math.min(Math.abs(b0), Math.abs(b1)), n);
+  const maxPitchAngleDeg = cylindricalPitchAngleDeg(Math.max(Math.abs(b0), Math.abs(b1)), n);
 
   const meanB = 0.5 * (b0 + b1);
   const meanR = 0.5 * (rMin + rMax);

@@ -7,17 +7,14 @@ import SceneAxes from "./SceneAxes";
 import ShaftReference from "./ShaftReference";
 import { degToRad } from "../geometry/surfaceMath";
 
-function getViewMetrics(rMax) {
-  const radius = Math.max(0.5, rMax);
-  return {
-    lateral: Math.max(5.2, radius * 2.6),
-    axial: Math.max(4.6, radius * 2.3),
-    isometric: new THREE.Vector3(radius * 2.2, radius * 1.8, radius * 1.5),
-  };
-}
-
+/**
+ * Fully auto-scales camera distances whether rMax is 0.05m (50mm) or 4.0m.
+ */
 function getViewPreset(viewKey, rMax) {
-  const { lateral, axial, isometric } = getViewMetrics(rMax);
+  const r = Math.max(0.04, rMax);
+  const lateral = r * 2.5;
+  const axial = r * 2.2;
+  const iso = new THREE.Vector3(r * 2.0, r * 1.8, r * 1.5);
 
   switch (viewKey) {
     case "front":
@@ -31,11 +28,11 @@ function getViewPreset(viewKey, rMax) {
     case "side":
       return { position: new THREE.Vector3(lateral, 0, 0), target: new THREE.Vector3(0, 0, 0), up: new THREE.Vector3(0, 0, 1) };
     case "shaft":
-      return { position: new THREE.Vector3(0.15, 0, axial * 1.1), target: new THREE.Vector3(0, 0, 0), up: new THREE.Vector3(0, 1, 0) };
+      return { position: new THREE.Vector3(r * 0.08, 0, axial * 1.1), target: new THREE.Vector3(0, 0, 0), up: new THREE.Vector3(0, 1, 0) };
     case "isometric":
     case "reset":
     default:
-      return { position: isometric, target: new THREE.Vector3(0, 0, 0), up: new THREE.Vector3(0, 0, 1) };
+      return { position: iso, target: new THREE.Vector3(0, 0, 0), up: new THREE.Vector3(0, 0, 1) };
   }
 }
 
@@ -49,7 +46,7 @@ function CameraSnapController({ controlsRef, viewRequest, rMax }) {
 
   useEffect(() => {
     if (!controlsRef.current || initialized.current) return;
-    const preset = getViewPreset("reset", rMax);
+    const preset = getViewPreset("side", rMax);
     camera.position.copy(preset.position);
     camera.up.copy(preset.up);
     controlsRef.current.target.copy(preset.target);
@@ -76,7 +73,7 @@ function CameraSnapController({ controlsRef, viewRequest, rMax }) {
     camera.lookAt(controlsRef.current.target);
     controlsRef.current.update();
 
-    if (camera.position.distanceToSquared(targetPos.current) < 1e-4) {
+    if (camera.position.distanceToSquared(targetPos.current) < 1e-5) {
       camera.position.copy(targetPos.current);
       controlsRef.current.target.copy(targetLook.current);
       animating.current = false;
@@ -86,9 +83,6 @@ function CameraSnapController({ controlsRef, viewRequest, rMax }) {
   return null;
 }
 
-/**
- * Helical Slipstream Streamlines. Direction and rotation reverse with negative RPM.
- */
 function SlipstreamFlow({ rMax, bladeCount, isRunning, rpm }) {
   const dir = rpm >= 0 ? 1 : -1;
 
@@ -135,25 +129,21 @@ function SlipstreamFlow({ rMax, bladeCount, isRunning, rpm }) {
   );
 }
 
-/**
- * Thrust Vector Arrow correctly oriented along Z.
- */
 function ThrustVector({ rMax, rpm }) {
   const dir = rpm >= 0 ? 1 : -1;
-  const arrowLen = Math.max(0.65, rMax * 0.6);
+  const arrowLen = Math.max(0.04, rMax * 0.55);
+  const arrowRadius = Math.max(0.002, rMax * 0.02);
   const rotX = dir > 0 ? Math.PI / 2 : -Math.PI / 2;
-  const zBase = dir * (arrowLen * 0.5 + 0.25);
+  const zBase = dir * (arrowLen * 0.5 + rMax * 0.1);
 
   return (
     <group position={[0, 0, zBase]}>
-      {/* Cylinder shaft along Z */}
       <mesh rotation={[rotX, 0, 0]}>
-        <cylinderGeometry args={[0.022, 0.022, arrowLen, 16]} />
+        <cylinderGeometry args={[arrowRadius, arrowRadius, arrowLen, 16]} />
         <meshStandardMaterial color="#00e676" emissive="#00c853" emissiveIntensity={0.6} />
       </mesh>
-      {/* Cone arrowhead along Z */}
-      <mesh position={[0, 0, dir * (arrowLen * 0.5 + 0.09)]} rotation={[rotX, 0, 0]}>
-        <coneGeometry args={[0.065, 0.18, 16]} />
+      <mesh position={[0, 0, dir * (arrowLen * 0.5 + arrowRadius * 3.5)]} rotation={[rotX, 0, 0]}>
+        <coneGeometry args={[arrowRadius * 3, arrowRadius * 7, 16]} />
         <meshStandardMaterial color="#00e676" emissive="#00c853" emissiveIntensity={0.8} />
       </mesh>
     </group>
@@ -161,15 +151,15 @@ function ThrustVector({ rMax, rpm }) {
 }
 
 export default function PropellerScene({ params, viewRequest, onGeometryReady }) {
-  const { rMax, bMax, rMin, gridOpacity, isRunning, rpm, bladeCount, showFlow, showThrustVector, showHub } = params;
+  const { rMax, bMin, bMax, rMin, gridOpacity, isRunning, rpm, bladeCount, showFlow, showThrustVector, showHub } = params;
 
   const controlsRef = useRef(null);
-  const gridSize = Math.max(8, rMax * 5.0);
-  const gridDivs = Math.max(10, Math.round(gridSize));
+  const gridSize = Math.max(0.3, rMax * 4.0);
+  const gridDivs = Math.max(10, Math.round(gridSize / Math.max(0.05, rMax * 0.2)));
 
-  // Dynamically size hub to guarantee the blade root never penetrates inside
-  const minRootRho = rMin * Math.cos(degToRad(bMax));
-  const safeHubRadius = Math.max(0.04, minRootRho * 0.85);
+  const maxAbsB = Math.max(Math.abs(bMin), Math.abs(bMax));
+  const minRootRho = rMin * Math.cos(degToRad(maxAbsB));
+  const safeHubRadius = Math.max(0.002, minRootRho * 0.85);
 
   return (
     <>
@@ -181,7 +171,6 @@ export default function PropellerScene({ params, viewRequest, onGeometryReady })
       <directionalLight position={[-6, -4, 5]} intensity={0.4} />
       <directionalLight position={[0, 0, -6]} intensity={0.35} />
 
-      {/* Grid aligned on XY Propeller Disc Plane (z=0) */}
       <gridHelper
         args={[gridSize, gridDivs, "#3a4459", "#181f2c"]}
         rotation={[Math.PI / 2, 0, 0]}
@@ -190,14 +179,14 @@ export default function PropellerScene({ params, viewRequest, onGeometryReady })
         material-depthWrite={false}
       />
 
-      <SceneAxes length={Math.max(3.8, rMax * 1.6)} />
+      <SceneAxes length={Math.max(0.1, rMax * 1.4)} />
 
       {showHub && (
         <ShaftReference
-          length={Math.max(6.0, rMax * 3.5)}
+          length={Math.max(0.2, rMax * 3.2)}
           hubRadius={safeHubRadius}
-          hubLength={rMax * 0.28}
-          shaftRadius={Math.min(0.025, safeHubRadius * 0.4)}
+          hubLength={Math.max(0.02, rMax * 0.35)}
+          shaftRadius={Math.max(0.001, safeHubRadius * 0.4)}
         />
       )}
 
@@ -222,8 +211,8 @@ export default function PropellerScene({ params, viewRequest, onGeometryReady })
         enableDamping
         dampingFactor={0.08}
         enablePan={false}
-        minDistance={Math.max(1.5, rMax * 0.8)}
-        maxDistance={Math.max(18, rMax * 9)}
+        minDistance={Math.max(0.02, rMax * 0.3)}
+        maxDistance={Math.max(0.5, rMax * 12)}
         target={[0, 0, 0]}
       />
     </>

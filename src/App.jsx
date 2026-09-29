@@ -4,6 +4,7 @@ import "./App.css";
 import {
   defaultParams,
   paramRanges,
+  modelPresets,
   sceneDefaults,
   validationConfig,
 } from "./config/defaultParams";
@@ -29,7 +30,7 @@ function runValidation(params) {
   const { rMin, rMax, n, bMin, bMax, bladeCount, probeU, probeV } = params;
   const results = [];
 
-  // 1. Drawing logic validation: special case n = 1
+  // 1. Drawing logic validation: special case n = 1 matches Dad's equations
   let drawingMatch = true;
   for (const deg of drawingMatchSampleDegrees) {
     const b = degToRad(deg);
@@ -78,7 +79,6 @@ function runValidation(params) {
   });
 
   // 4. Cylindrical-section pitch consistency check
-  // Numerically evaluate dz/dtheta on cylinder rho = const against 1 / (n * cos^2(b))
   const bMid = degToRad(0.5 * (bMin + bMax));
   const deltaB = 1e-4;
   const bA = bMid - deltaB;
@@ -99,14 +99,15 @@ function runValidation(params) {
   });
 
   // 5. Hub clearance check
-  const minRootRho = rMin * Math.cos(degToRad(bMax));
-  const safeHubRadius = Math.max(0.04, minRootRho * 0.85);
-  const hubClearanceOk = safeHubRadius < minRootRho;
+  const maxAbsB = Math.max(Math.abs(bMin), Math.abs(bMax));
+  const minRootRho = rMin * Math.cos(degToRad(maxAbsB));
+  const safeHubRadius = Math.max(0.002, minRootRho * 0.85);
+  const hubClearanceOk = safeHubRadius <= minRootRho;
 
   results.push({
-    label: "Hub cylinder radius is smaller than minimum blade root radius",
+    label: "Hub cylinder radius clears minimum blade root at extreme |b|",
     pass: hubClearanceOk,
-    detail: `hub radius = ${safeHubRadius.toFixed(3)} m, min blade root ρ = ${minRootRho.toFixed(3)} m`,
+    detail: `hub radius = ${(safeHubRadius * 1000).toFixed(1)} mm, min blade root ρ = ${(minRootRho * 1000).toFixed(1)} mm`,
   });
 
   // 6. Blade count check
@@ -120,13 +121,20 @@ function runValidation(params) {
 }
 
 const VIEW_KEYS = [
-  { key: "isometric", label: "Isometric" },
+  { key: "side", label: "Side (XZ / S-Curve)" },
   { key: "front", label: "Front (XY)" },
-  { key: "side", label: "Side (XZ)" },
-  { key: "top", label: "Top (Disc)" },
+  { key: "top", label: "Top (Disc / Circle)" },
+  { key: "isometric", label: "Isometric" },
   { key: "shaft", label: "Shaft Axial" },
   { key: "reset", label: "Reset View" },
 ];
+
+function formatRadius(val) {
+  if (Math.abs(val) < 0.1) {
+    return `${(val * 1000).toFixed(0)} mm`;
+  }
+  return `${val.toFixed(2)} m`;
+}
 
 export default function App() {
   const [params, setParams] = useState(() => clampSurfaceParams(defaultParams));
@@ -141,6 +149,14 @@ export default function App() {
       if (key !== "isRunning") updated.isRunning = prev.isRunning;
       return updated;
     });
+  };
+
+  const applyPreset = (preset) => {
+    setParams((prev) => {
+      const merged = { ...prev, ...preset.params, isRunning: false };
+      return clampSurfaceParams(merged);
+    });
+    setViewRequest((v) => ({ key: "side", nonce: v.nonce + 1 }));
   };
 
   const validationResults = useMemo(() => runValidation(params), [params]);
@@ -165,11 +181,11 @@ export default function App() {
         <div className="viewer-stage">
           <Canvas
             camera={{
-              position: [4.5, 3.8, 3.2],
+              position: [2.5, 0, 0],
               up: [0, 0, 1],
               fov: sceneDefaults.cameraFov,
-              near: 0.1,
-              far: 120,
+              near: 0.001,
+              far: 150,
             }}
           >
             <PropellerScene
@@ -181,7 +197,7 @@ export default function App() {
             />
           </Canvas>
 
-          {/* Quick Action Overlay Bar */}
+          {/* Viewport Top Action Bar */}
           <div className="viewport-quick-bar">
             <button
               type="button"
@@ -196,35 +212,37 @@ export default function App() {
             <button
               type="button"
               className="action-btn"
-              onClick={() => setViewRequest((v) => ({ key: "reset", nonce: v.nonce + 1 }))}
+              onClick={() => {
+                updateParam("isRunning", false);
+                setViewRequest((v) => ({ key: "side", nonce: v.nonce + 1 }));
+              }}
             >
-              ⟲ Reset Camera
+              ⟲ Reset & Align Side (XZ)
             </button>
           </div>
 
-          {/* Dynamic Probe Pitch Badge */}
+          {/* Viewport Floating Status Badge */}
           <div className="viewport-badge">
-            <span className="badge-title">Probe Cylindrical Pitch:</span>
-            <span className="badge-value">
-              β = {probeFrame.pitchAngleDeg.toFixed(1)}° | P = {probeFrame.geometricPitch.toFixed(2)} m
-            </span>
+            <span className="badge-title">Tip Radius:</span>
+            <span className="badge-value">{formatRadius(params.rMax)}</span>
+            <span className="badge-title" style={{ marginLeft: 8 }}>Span:</span>
+            <span className="badge-value">{params.bMin > 0 ? `+${params.bMin}` : params.bMin}° → {params.bMax > 0 ? `+${params.bMax}` : params.bMax}°</span>
           </div>
         </div>
       </main>
 
-      {/* Technical Engineering Sidebar */}
+      {/* Control Panel Sidebar */}
       <aside className="control-panel">
         <div className="control-panel__scroll">
-          {/* Header */}
           <header className="brand-header">
-            <div className="brand-badge">Rooster Labs • Math Inspection Rig</div>
+            <div className="brand-badge">Rooster Labs • Math-First Rig</div>
             <h1 className="brand-title">Parametric Propeller Viewer</h1>
             <p className="brand-desc">
-              Technical inspection environment for a mathematically defined ruled spherical surface ($a = n \cdot b$).
+              Precision inspection environment for ruled spherical surfaces ($a = n \cdot b$).
             </p>
           </header>
 
-          {/* Tab Navigation */}
+          {/* Navigation Tabs */}
           <nav className="tab-nav">
             {[
               { id: "geometry", label: "Geometry" },
@@ -243,9 +261,31 @@ export default function App() {
             ))}
           </nav>
 
-          {/* Tab 1: Geometry Domain & Solidification */}
+          {/* TAB 1: GEOMETRY */}
           {activeTab === "geometry" && (
             <div className="tab-pane">
+              {/* 1-Click Presets */}
+              <section className="card">
+                <div className="card-header">
+                  <strong>1-Click Model Presets</strong>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {modelPresets.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      className="chip-btn"
+                      style={{ textAlign: "left", padding: "8px 10px" }}
+                      onClick={() => applyPreset(preset)}
+                    >
+                      <div style={{ fontWeight: 600, color: "#fff" }}>{preset.label}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>{preset.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              {/* Parametric Domain Sliders */}
               <section className="card">
                 <div className="card-header">
                   <strong>Surface Parametric Domain</strong>
@@ -266,7 +306,7 @@ export default function App() {
                     onChange={(e) => updateParam("n", e.target.value)}
                   />
                   <div className="hint-text">
-                    Pitch varies along chord: tan(β) = 1 / (n · cos²b). Pitch angle range: {aeroMetrics.minPitchAngleDeg.toFixed(1)}° to {aeroMetrics.maxPitchAngleDeg.toFixed(1)}°.
+                    Pitch varies along chord: tan(β) = 1 / (n · cos²b).
                   </div>
                 </div>
 
@@ -292,12 +332,12 @@ export default function App() {
                 <div className="control-row">
                   <div className="label-bar">
                     <span>Root Radius (rMin)</span>
-                    <strong>{params.rMin.toFixed(2)} m</strong>
+                    <strong>{formatRadius(params.rMin)}</strong>
                   </div>
                   <input
                     type="range"
                     min={paramRanges.r.min}
-                    max={params.rMax - paramRanges.r.minSpan}
+                    max={Math.max(paramRanges.r.min, params.rMax - paramRanges.r.minSpan)}
                     step={paramRanges.r.step}
                     value={params.rMin}
                     onChange={(e) => updateParam("rMin", e.target.value)}
@@ -307,7 +347,7 @@ export default function App() {
                 <div className="control-row">
                   <div className="label-bar">
                     <span>Tip Radius (rMax)</span>
-                    <strong>{params.rMax.toFixed(2)} m</strong>
+                    <strong>{formatRadius(params.rMax)}</strong>
                   </div>
                   <input
                     type="range"
@@ -322,7 +362,7 @@ export default function App() {
                 <div className="control-row">
                   <div className="label-bar">
                     <span>Elevation Span (bMin → bMax)</span>
-                    <strong>{params.bMin}° — {params.bMax}°</strong>
+                    <strong>{params.bMin > 0 ? `+${params.bMin}` : params.bMin}° — {params.bMax > 0 ? `+${params.bMax}` : params.bMax}°</strong>
                   </div>
                   <div className="dual-slider">
                     <input
@@ -345,7 +385,7 @@ export default function App() {
                 </div>
               </section>
 
-              {/* Solid Blade & Hub */}
+              {/* Solid Blade / Hub Setup */}
               <section className="card">
                 <div className="card-header">
                   <strong>Solid Blade & Hub Modeling</strong>
@@ -361,14 +401,14 @@ export default function App() {
                   <span>
                     <strong>Extrude Watertight Solid Blade (3D Print Ready)</strong>
                     <div className="subtext">
-                      Applies an aerodynamic profile (30% chord peak) with continuous manifold skirts.
+                      Watertight closed 2-manifold solid with continuous side skirts.
                     </div>
                   </span>
                 </label>
 
                 {!params.solidBlade && (
                   <div className="sheet-warning-box">
-                    <strong>Sheet Mode Notice:</strong> Current surface has zero thickness. STL export will produce an open 2D sheet (for CAD surfaces, not direct 3D printing).
+                    <strong>Sheet Mode Notice:</strong> Current surface has zero thickness. STL export will produce an open 2D sheet. Enable Solid Blade mode for 3D printing.
                   </div>
                 )}
 
@@ -376,7 +416,7 @@ export default function App() {
                   <div className="control-row">
                     <div className="label-bar">
                       <span>Root Thickness</span>
-                      <strong>{(params.bladeThickness * 100).toFixed(1)} cm</strong>
+                      <strong>{formatRadius(params.bladeThickness)}</strong>
                     </div>
                     <input
                       type="range"
@@ -397,12 +437,11 @@ export default function App() {
                   />
                   <span>
                     <strong>Show Central Hub & Spinner</strong>
-                    <div className="subtext">Hub automatically sized to guarantee root clearance.</div>
                   </span>
                 </label>
               </section>
 
-              {/* Views */}
+              {/* Camera Presets */}
               <section className="card">
                 <strong>Camera Presets</strong>
                 <div className="grid-buttons">
@@ -421,7 +460,7 @@ export default function App() {
             </div>
           )}
 
-          {/* Tab 2: Kinematics & Flow */}
+          {/* TAB 2: KINEMATICS */}
           {activeTab === "aero" && (
             <div className="tab-pane">
               <section className="card">
@@ -446,11 +485,11 @@ export default function App() {
 
                 <div className="metric-grid">
                   <div className="metric-box">
-                    <div className="metric-label">Leading Edge Pitch (bMin)</div>
+                    <div className="metric-label">Leading Edge Pitch</div>
                     <div className="metric-val">{aeroMetrics.minPitchAngleDeg.toFixed(1)}°</div>
                   </div>
                   <div className="metric-box">
-                    <div className="metric-label">Trailing Edge Pitch (bMax)</div>
+                    <div className="metric-label">Trailing Edge Pitch</div>
                     <div className="metric-val">{aeroMetrics.maxPitchAngleDeg.toFixed(1)}°</div>
                   </div>
                   <div className="metric-box">
@@ -458,16 +497,16 @@ export default function App() {
                     <div className="metric-val">{aeroMetrics.ear.toFixed(2)}</div>
                   </div>
                   <div className="metric-box">
-                    <div className="metric-label">Tip Chord / Root Chord</div>
-                    <div className="metric-val">{(aeroMetrics.tipChord / Math.max(1e-4, aeroMetrics.rootChord)).toFixed(1)}×</div>
+                    <div className="metric-label">Mean Geometric Pitch</div>
+                    <div className="metric-val">{formatRadius(aeroMetrics.meanGeometricPitch)}</div>
                   </div>
                   <div className="metric-box">
-                    <div className="metric-label">Tip Speed (v_tip)</div>
+                    <div className="metric-label">Tip Speed</div>
                     <div className="metric-val">{aeroMetrics.tipSpeed.toFixed(1)} m/s</div>
                   </div>
                   <div className="metric-box">
-                    <div className="metric-label">Mean Geometric Pitch</div>
-                    <div className="metric-val">{aeroMetrics.meanGeometricPitch.toFixed(2)} m</div>
+                    <div className="metric-label">Theoretical Advance</div>
+                    <div className="metric-val">{aeroMetrics.theoreticalSpeedMean.toFixed(1)} m/s</div>
                   </div>
                 </div>
 
@@ -480,7 +519,6 @@ export default function App() {
                     />
                     <span>
                       <strong>Visualize Helical Slipstream Streamlines</strong>
-                      <div className="subtext">Reverses axial direction with negative RPM.</div>
                     </span>
                   </label>
 
@@ -499,7 +537,7 @@ export default function App() {
             </div>
           )}
 
-          {/* Tab 3: Sections & Inspection */}
+          {/* TAB 3: PROBE & SECTIONS */}
           {activeTab === "inspection" && (
             <div className="tab-pane">
               <section className="card">
@@ -513,7 +551,6 @@ export default function App() {
                   />
                   <span>
                     <strong style={{ color: "#ff80ab" }}>Cylindrical Section Cut (ρ = const)</strong>
-                    <div className="subtext">Standard cylindrical cut showing progressive chordwise pitch.</div>
                   </span>
                 </label>
 
@@ -585,23 +622,22 @@ export default function App() {
                 )}
               </section>
 
-              {/* Surface Readout Box */}
               <section className="card">
                 <strong>Probe Differential Readout</strong>
                 <div className="readout-box">
-                  <div><strong>Position:</strong> x = {probeFrame.point.x.toFixed(3)}, y = {probeFrame.point.y.toFixed(3)}, z = {probeFrame.point.z.toFixed(3)}</div>
-                  <div><strong>Spherical Radius (r):</strong> {probeFrame.r.toFixed(3)} m</div>
-                  <div><strong>Cylindrical Radius (ρ):</strong> {probeFrame.localRadius.toFixed(3)} m</div>
+                  <div><strong>Position:</strong> x = {formatRadius(probeFrame.point.x)}, y = {formatRadius(probeFrame.point.y)}, z = {formatRadius(probeFrame.point.z)}</div>
+                  <div><strong>Spherical Radius (r):</strong> {formatRadius(probeFrame.r)}</div>
+                  <div><strong>Cylindrical Radius (ρ):</strong> {formatRadius(probeFrame.localRadius)}</div>
                   <div><strong>Elevation Angle (b):</strong> {probeFrame.bDeg.toFixed(2)}°</div>
-                  <div><strong>Local Pitch Angle (β_cyl):</strong> {probeFrame.pitchAngleDeg.toFixed(2)}°</div>
-                  <div><strong>Local Geometric Pitch (P):</strong> {probeFrame.geometricPitch.toFixed(3)} m/rev</div>
+                  <div><strong>Local Pitch Angle (β):</strong> {probeFrame.pitchAngleDeg.toFixed(2)}°</div>
+                  <div><strong>Local Geometric Pitch (P):</strong> {formatRadius(probeFrame.geometricPitch)} / rev</div>
                   <div><strong>Unit Normal (n̂):</strong> ({probeFrame.normal.x.toFixed(3)}, {probeFrame.normal.y.toFixed(3)}, {probeFrame.normal.z.toFixed(3)})</div>
                 </div>
               </section>
             </div>
           )}
 
-          {/* Tab 4: Validation */}
+          {/* TAB 4: VALIDATION */}
           {activeTab === "validation" && (
             <div className="tab-pane">
               <section className="card">
