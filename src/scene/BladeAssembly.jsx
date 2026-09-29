@@ -8,11 +8,6 @@ import BladeSurfaceMesh from "./BladeSurfaceMesh";
 import DebugCurve from "./DebugCurve";
 import ProbePoint from "./ProbePoint";
 
-/**
- * Rotating blade assembly.
- * Each blade is an identical rendered instance of the original parametric surface,
- * evenly rotated around the z-axis.
- */
 export default function BladeAssembly({
   rMin,
   rMax,
@@ -25,28 +20,33 @@ export default function BladeAssembly({
   showProbe,
   showIsoR,
   showIsoB,
+  showCylCut,
+  showEdges,
+  solidBlade,
+  bladeThickness,
+  colorMode,
   probeU,
   probeV,
   probeVectorScale,
   rpm,
   isRunning,
+  onGeometryReady,
 }) {
   const assemblyRef = useRef(null);
 
-  const surfaceParams = useMemo(() => {
-    return {
-      rMin,
-      rMax,
-      n,
-      bMin,
-      bMax,
-      probeVectorScale,
-    };
-  }, [rMin, rMax, n, bMin, bMax, probeVectorScale]);
+  const surfaceParams = useMemo(
+    () => ({ rMin, rMax, n, bMin, bMax, probeVectorScale }),
+    [rMin, rMax, n, bMin, bMax, probeVectorScale]
+  );
 
-  const probeParams = useMemo(() => {
-    return surfaceParamsFromUV(surfaceParams, probeU, probeV);
-  }, [surfaceParams, probeU, probeV]);
+  const probeCoords = useMemo(
+    () => surfaceParamsFromUV(surfaceParams, probeU, probeV),
+    [surfaceParams, probeU, probeV]
+  );
+
+  const probeCylRadius = useMemo(() => {
+    return probeCoords.r * Math.cos((probeCoords.bDeg * Math.PI) / 180);
+  }, [probeCoords]);
 
   const sharedGeometry = useMemo(() => {
     const data = buildBladeSurfaceData({
@@ -57,81 +57,112 @@ export default function BladeAssembly({
       bMax,
       radialSegments: meshConfig.radialSegments,
       angularSegments: meshConfig.angularSegments,
+      solidBlade,
+      bladeThickness,
     });
 
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute(
-      "position",
-      new THREE.BufferAttribute(data.positions, 3)
-    );
-    geometry.setAttribute(
-      "normal",
-      new THREE.BufferAttribute(data.normals, 3)
-    );
-    geometry.setAttribute("uv", new THREE.BufferAttribute(data.uvs, 2));
-    geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
-    geometry.computeBoundingSphere();
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
+    geo.setAttribute("normal", new THREE.BufferAttribute(data.normals, 3));
+    geo.setAttribute("uv", new THREE.BufferAttribute(data.uvs, 2));
+    geo.setIndex(new THREE.BufferAttribute(data.indices, 1));
+    geo.computeBoundingSphere();
 
-    return geometry;
-  }, [rMin, rMax, n, bMin, bMax]);
+    if (onGeometryReady) {
+      onGeometryReady(geo);
+    }
 
-  const bladeInstances = useMemo(() => {
-    const safeBladeCount = Math.max(2, Math.min(6, Math.round(Number(bladeCount) || 2)));
-    const angleStep = (Math.PI * 2) / safeBladeCount;
+    return geo;
+  }, [rMin, rMax, n, bMin, bMax, solidBlade, bladeThickness, onGeometryReady]);
 
-    return Array.from({ length: safeBladeCount }, (_, index) => ({
-      index,
-      rotationZ: index * angleStep,
-      color: index === 0 ? blade1Color : blade2Color,
+  const blades = useMemo(() => {
+    const count = Math.max(1, Math.min(8, Math.round(bladeCount)));
+    const step = (Math.PI * 2) / count;
+
+    return Array.from({ length: count }, (_, i) => ({
+      index: i,
+      rotationZ: i * step,
+      color: i === 0 ? blade1Color : blade2Color,
     }));
   }, [bladeCount, blade1Color, blade2Color]);
 
   useEffect(() => {
-    return () => {
-      sharedGeometry.dispose();
-    };
+    return () => sharedGeometry.dispose();
   }, [sharedGeometry]);
 
   usePropellerSpin(assemblyRef, rpm, isRunning);
 
   return (
     <group ref={assemblyRef}>
-      {bladeInstances.map((blade) => (
+      {blades.map((b) => (
         <BladeSurfaceMesh
-          key={`blade-${blade.index}`}
+          key={`blade-${b.index}`}
           geometry={sharedGeometry}
-          color={blade.color}
-          rotationZ={blade.rotationZ}
+          color={b.color}
+          rotationZ={b.rotationZ}
+          showEdges={showEdges}
+          colorMode={colorMode}
         />
       ))}
 
+      {/* Constant-Radius Spherical Arc */}
       {showIsoR && (
         <DebugCurve
           mode="r"
           params={surfaceParams}
-          value={probeParams.r}
+          value={probeCoords.r}
           color="#ffe082"
-          rotationZ={0}
+          lineWidth={2.8}
         />
       )}
 
+      {/* Constant-Elevation Radial Ray */}
       {showIsoB && (
         <DebugCurve
           mode="b"
           params={surfaceParams}
-          value={probeParams.bDeg}
-          color="#b8f2e6"
-          rotationZ={0}
+          value={probeCoords.bDeg}
+          color="#80deea"
+          lineWidth={2.8}
         />
       )}
 
-      {showProbe && (
-        <ProbePoint
+      {/* Cylindrical Section Cut (rho = const) */}
+      {showCylCut && (
+        <DebugCurve
+          mode="cyl"
           params={surfaceParams}
-          u={probeU}
-          v={probeV}
-          rotationZ={0}
+          value={probeCylRadius}
+          color="#ff80ab"
+          lineWidth={3.0}
         />
+      )}
+
+      {/* Leading Edge Highlight (Green) */}
+      {showEdges && (
+        <DebugCurve
+          mode="b"
+          params={surfaceParams}
+          value={bMin}
+          color="#00e676"
+          lineWidth={2.2}
+        />
+      )}
+
+      {/* Trailing Edge Highlight (Coral Red) */}
+      {showEdges && (
+        <DebugCurve
+          mode="b"
+          params={surfaceParams}
+          value={bMax}
+          color="#ff5252"
+          lineWidth={2.2}
+        />
+      )}
+
+      {/* Interactive Surface Probe */}
+      {showProbe && (
+        <ProbePoint params={surfaceParams} u={probeU} v={probeV} />
       )}
     </group>
   );

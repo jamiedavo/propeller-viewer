@@ -1,61 +1,42 @@
 import React, { useMemo } from "react";
 import { Line } from "@react-three/drei";
-import {
-  add,
-  scale,
-  surfaceFrameFromUV,
-} from "../geometry/surfaceMath";
+import { add, scale, surfaceFrameFromUV } from "../geometry/surfaceMath";
 
-function pointToArray(point) {
-  return [point.x, point.y, point.z];
+function toArray(pt) {
+  return [pt.x, pt.y, pt.z];
 }
 
 /**
- * Probe a single location on blade 1.
- * Renders the point plus local tangent and normal directions.
+ * Interactive surface probe displaying exact local coordinates and tangent-normal triad.
  */
-export default function ProbePoint({
-  params,
-  u,
-  v,
-  rotationZ = 0,
-  color = "#ffe082",
-}) {
+export default function ProbePoint({ params, u, v, rotationZ = 0 }) {
   const frame = useMemo(() => {
     return surfaceFrameFromUV(params, u, v);
   }, [params, u, v]);
 
-  const tangentRLine = useMemo(() => {
-    return [
-      pointToArray(frame.point),
-      pointToArray(add(frame.point, scale(frame.tangentRUnit, params.probeVectorScale))),
-    ];
-  }, [frame, params.probeVectorScale]);
-
-  const tangentBLine = useMemo(() => {
-    return [
-      pointToArray(frame.point),
-      pointToArray(add(frame.point, scale(frame.tangentBUnit, params.probeVectorScale))),
-    ];
-  }, [frame, params.probeVectorScale]);
-
-  const normalLine = useMemo(() => {
-    return [
-      pointToArray(frame.point),
-      pointToArray(add(frame.point, scale(frame.normal, params.probeVectorScale))),
-    ];
+  const triad = useMemo(() => {
+    const s = params.probeVectorScale || 0.35;
+    return {
+      pt: toArray(frame.point),
+      tanR: [toArray(frame.point), toArray(add(frame.point, scale(frame.tangentRUnit, s)))],
+      tanB: [toArray(frame.point), toArray(add(frame.point, scale(frame.tangentBUnit, s)))],
+      norm: [toArray(frame.point), toArray(add(frame.point, scale(frame.normal, s)))],
+    };
   }, [frame, params.probeVectorScale]);
 
   return (
     <group rotation={[0, 0, rotationZ]}>
-      <mesh position={pointToArray(frame.point)} renderOrder={4}>
-        <sphereGeometry args={[0.055, 20, 20]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.45} />
+      <mesh position={triad.pt} renderOrder={10}>
+        <sphereGeometry args={[0.045, 18, 18]} />
+        <meshStandardMaterial color="#ffd54f" emissive="#ffb300" emissiveIntensity={0.6} />
       </mesh>
 
-      <Line points={tangentRLine} color="#64d2ff" lineWidth={2} />
-      <Line points={tangentBLine} color="#ff8cc6" lineWidth={2} />
-      <Line points={normalLine} color="#fff3b0" lineWidth={2} />
+      {/* Tangent along r (Radial) - Cyan */}
+      <Line points={triad.tanR} color="#00e5ff" lineWidth={2.5} />
+      {/* Tangent along b (Elevation / Chord) - Pink */}
+      <Line points={triad.tanB} color="#ff4081" lineWidth={2.5} />
+      {/* Analytical Unit Normal - Bright Yellow */}
+      <Line points={triad.norm} color="#ffea00" lineWidth={3.2} />
     </group>
   );
 }

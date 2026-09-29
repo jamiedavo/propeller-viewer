@@ -1,71 +1,70 @@
 import React, { useEffect, useMemo } from "react";
 import * as THREE from "three";
 
-function deriveReadableTones(color) {
-  const base = new THREE.Color(color);
-  const front = base.clone().lerp(new THREE.Color("#ffffff"), 0.08);
-  const back = base.clone().multiplyScalar(0.68);
-  const edge = base.clone().multiplyScalar(0.48);
-
-  return { front, back, edge };
+function deriveTones(colorHex) {
+  const base = new THREE.Color(colorHex);
+  return {
+    front: base.clone().lerp(new THREE.Color("#ffffff"), 0.08),
+    back: base.clone().multiplyScalar(0.65),
+    edge: base.clone().multiplyScalar(0.4),
+  };
 }
 
-/**
- * Pure rendering component for one blade mesh.
- * Geometry is passed in from the assembly so both blades
- * can share the exact same BufferGeometry instance.
- *
- * Rendering approach:
- * - fully opaque blade surface
- * - normal depth behavior
- * - subtle boundary edges for paused-state readability
- */
 export default function BladeSurfaceMesh({
   geometry,
-  color = "#7ec8e3",
+  color = "#3a88c8",
   rotationZ = 0,
+  showEdges = true,
+  colorMode = "dualtone",
 }) {
   const boundaryEdges = useMemo(() => {
-    return new THREE.EdgesGeometry(geometry, 35);
+    return new THREE.EdgesGeometry(geometry, 30);
   }, [geometry]);
 
-  const tones = useMemo(() => deriveReadableTones(color), [color]);
+  const tones = useMemo(() => deriveTones(color), [color]);
 
   useEffect(() => {
-    return () => {
-      boundaryEdges.dispose();
-    };
+    return () => boundaryEdges.dispose();
   }, [boundaryEdges]);
+
+  if (colorMode === "wireframe") {
+    return (
+      <group rotation={[0, 0, rotationZ]}>
+        <mesh geometry={geometry}>
+          <meshBasicMaterial color={tones.front} wireframe />
+        </mesh>
+      </group>
+    );
+  }
 
   return (
     <group rotation={[0, 0, rotationZ]}>
+      {/* Back / Pressure Side */}
       <mesh geometry={geometry} renderOrder={1}>
         <meshStandardMaterial
           color={tones.back}
           side={THREE.BackSide}
-          roughness={0.68}
-          metalness={0.02}
+          roughness={0.6}
+          metalness={0.12}
         />
       </mesh>
 
+      {/* Front / Suction Side */}
       <mesh geometry={geometry} renderOrder={2}>
         <meshStandardMaterial
           color={tones.front}
           side={THREE.FrontSide}
-          roughness={0.54}
-          metalness={0.03}
+          roughness={0.45}
+          metalness={0.18}
         />
       </mesh>
 
-      <lineSegments geometry={boundaryEdges} renderOrder={3}>
-        <lineBasicMaterial
-          color={tones.edge}
-          depthTest
-          toneMapped={false}
-          transparent
-          opacity={0.95}
-        />
-      </lineSegments>
+      {/* Sharp boundary edge lines */}
+      {showEdges && (
+        <lineSegments geometry={boundaryEdges} renderOrder={3}>
+          <lineBasicMaterial color={tones.edge} transparent opacity={0.9} />
+        </lineSegments>
+      )}
     </group>
   );
 }

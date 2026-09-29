@@ -1,50 +1,38 @@
-import { paramRanges } from "../config/defaultParams";
-
 /**
- * Geometry utilities for the parametric blade:
+ * Governing Mathematical Utilities & Analytical Differential Geometry
  *
- * x = r*cos(b)*cos(n*b)
- * y = r*cos(b)*sin(n*b)
- * z = r*sin(b)
- *
- * UI angles are in degrees.
- * Trig math uses radians internally.
+ * Governing Equations:
+ *   x = r * cos(b) * cos(n * b)
+ *   y = r * cos(b) * sin(n * b)
+ *   z = r * sin(b)
  */
+
+export function degToRad(deg) {
+  return (deg * Math.PI) / 180;
+}
+
+export function radToDeg(rad) {
+  return (rad * 180) / Math.PI;
+}
 
 export function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
-}
-
-export function clamp01(value) {
-  return clamp(value, 0, 1);
 }
 
 export function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
-export function degToRad(degrees) {
-  return (degrees * Math.PI) / 180;
-}
-
-export function radToDeg(radians) {
-  return (radians * 180) / Math.PI;
-}
-
 export function add(a, b) {
-  return {
-    x: a.x + b.x,
-    y: a.y + b.y,
-    z: a.z + b.z,
-  };
+  return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z };
+}
+
+export function sub(a, b) {
+  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
 }
 
 export function scale(v, s) {
-  return {
-    x: v.x * s,
-    y: v.y * s,
-    z: v.z * s,
-  };
+  return { x: v.x * s, y: v.y * s, z: v.z * s };
 }
 
 export function dot(a, b) {
@@ -60,152 +48,193 @@ export function cross(a, b) {
 }
 
 export function length(v) {
-  return Math.hypot(v.x, v.y, v.z);
+  return Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
 }
 
 export function normalize(v) {
-  const vLength = length(v);
-
-  if (vLength < 1e-12) {
-    return { x: 0, y: 0, z: 1 };
-  }
-
-  return scale(v, 1 / vLength);
+  const len = length(v);
+  if (len < 1e-12) return { x: 0, y: 0, z: 1 };
+  return scale(v, 1 / len);
 }
 
+/**
+ * Evaluates the governing parametric surface point at (r, b [rad], n).
+ */
 export function surfacePoint(r, b, n) {
+  const cosB = Math.cos(b);
+  const sinB = Math.sin(b);
+  const nb = n * b;
+  const cosNB = Math.cos(nb);
+  const sinNB = Math.sin(nb);
+
   return {
-    x: r * Math.cos(b) * Math.cos(n * b),
-    y: r * Math.cos(b) * Math.sin(n * b),
-    z: r * Math.sin(b),
+    x: r * cosB * cosNB,
+    y: r * cosB * sinNB,
+    z: r * sinB,
   };
 }
 
+/**
+ * Analytical partial derivatives with respect to r and b.
+ */
 export function surfaceDerivatives(r, b, n) {
   const cosB = Math.cos(b);
   const sinB = Math.sin(b);
-  const cosNB = Math.cos(n * b);
-  const sinNB = Math.sin(n * b);
+  const nb = n * b;
+  const cosNB = Math.cos(nb);
+  const sinNB = Math.sin(nb);
 
+  // dS/dr (unit length)
   const tangentR = {
     x: cosB * cosNB,
     y: cosB * sinNB,
     z: sinB,
   };
 
+  // dS/db
   const tangentB = {
-    x: r * (-sinB * cosNB - n * cosB * sinNB),
-    y: r * (-sinB * sinNB + n * cosB * cosNB),
+    x: -r * (sinB * cosNB + n * cosB * sinNB),
+    y: -r * (sinB * sinNB - n * cosB * cosNB),
     z: r * cosB,
   };
 
   return { tangentR, tangentB };
 }
 
-export function surfaceFrame(r, b, n) {
-  const point = surfacePoint(r, b, n);
-  const { tangentR, tangentB } = surfaceDerivatives(r, b, n);
-  const normal = normalize(cross(tangentR, tangentB));
+/**
+ * Exact analytical unit normal vector pointing toward suction/thrust face.
+ */
+export function surfaceNormal(r, b, n) {
+  const cosB = Math.cos(b);
+  const sinB = Math.sin(b);
+  const nb = n * b;
+  const cosNB = Math.cos(nb);
+  const sinNB = Math.sin(nb);
+
+  const k = n * sinB * cosB;
+  const rawNx = sinNB - k * cosNB;
+  const rawNy = -(cosNB + k * sinNB);
+  const rawNz = n * cosB * cosB;
+
+  const len = Math.sqrt(1 + n * n * cosB * cosB);
 
   return {
-    point,
-    tangentR,
-    tangentB,
-    tangentRUnit: normalize(tangentR),
-    tangentBUnit: normalize(tangentB),
-    normal,
-  };
-}
-
-export function radiusFromAxis(point) {
-  return Math.sqrt(point.x * point.x + point.y * point.y);
-}
-
-export function surfaceParamsFromUV(params, u, v) {
-  const safeU = clamp01(u);
-  const safeV = clamp01(v);
-  const r = lerp(params.rMin, params.rMax, safeU);
-  const bDeg = lerp(params.bMin, params.bMax, safeV);
-  const b = degToRad(bDeg);
-
-  return { u: safeU, v: safeV, r, bDeg, b };
-}
-
-export function surfaceFrameFromUV(params, u, v) {
-  const uv = surfaceParamsFromUV(params, u, v);
-  const frame = surfaceFrame(uv.r, uv.b, params.n);
-
-  return {
-    ...uv,
-    ...frame,
-    localRadius: radiusFromAxis(frame.point),
+    x: rawNx / len,
+    y: rawNy / len,
+    z: rawNz / len,
   };
 }
 
 /**
- * Clamp and sanitize user-facing parameters.
- * Domain controls are now intentionally user-adjustable.
+ * Full differential frame at a specified (r, bDeg).
  */
-export function clampSurfaceParams(params) {
-  const next = { ...params };
+export function surfaceFrame(r, bDeg, n, vectorScale = 0.4) {
+  const b = degToRad(bDeg);
+  const pt = surfacePoint(r, b, n);
+  const { tangentR, tangentB } = surfaceDerivatives(r, b, n);
+  const norm = surfaceNormal(r, b, n);
 
-  delete next.bladeOpacity;
+  const localRadius = Math.sqrt(pt.x * pt.x + pt.y * pt.y);
+  const pitchAngleDeg = radToDeg(Math.atan(1 / n));
+  const geometricPitch = n > 0 ? (2 * Math.PI * localRadius) / n : 0;
 
-  const toNumber = (value, fallback) => {
-    const num = Number(value);
-    return Number.isFinite(num) ? num : fallback;
+  return {
+    point: pt,
+    r,
+    bDeg,
+    bRad: b,
+    localRadius,
+    tangentR,
+    tangentRUnit: normalize(tangentR),
+    tangentB,
+    tangentBUnit: normalize(tangentB),
+    normal: norm,
+    pitchAngleDeg,
+    geometricPitch,
+    vectorScale,
   };
+}
 
-  next.n = clamp(toNumber(next.n, 1), paramRanges.n.min, paramRanges.n.max);
+export function surfaceParamsFromUV(params, u, v) {
+  const r = lerp(params.rMin, params.rMax, clamp(u, 0, 1));
+  const bDeg = lerp(params.bMin, params.bMax, clamp(v, 0, 1));
+  return { r, bDeg };
+}
 
-  next.bladeCount = Math.round(
-    clamp(
-      toNumber(next.bladeCount, 2),
-      paramRanges.bladeCount.min,
-      paramRanges.bladeCount.max
-    )
-  );
+export function surfaceFrameFromUV(params, u, v) {
+  const { r, bDeg } = surfaceParamsFromUV(params, u, v);
+  return surfaceFrame(r, bDeg, params.n, params.probeVectorScale || 0.4);
+}
 
-  next.gridOpacity = clamp(
-    toNumber(next.gridOpacity, 0.35),
-    paramRanges.gridOpacity.min,
-    paramRanges.gridOpacity.max
-  );
+export function clampSurfaceParams(p) {
+  const rMin = Math.max(0.05, Math.min(p.rMin, p.rMax - 0.1));
+  const rMax = Math.max(rMin + 0.1, p.rMax);
+  const bMin = Math.max(0, Math.min(p.bMin, p.bMax - 2));
+  const bMax = Math.max(bMin + 2, Math.min(88, p.bMax));
+  const n = Math.max(0.1, Math.min(4.0, p.n));
+  const bladeCount = Math.max(1, Math.min(8, Math.round(p.bladeCount || 2)));
 
-  next.rMin = clamp(
-    toNumber(next.rMin, 0.05),
-    paramRanges.r.min,
-    paramRanges.r.max - paramRanges.r.minSpan
-  );
+  return {
+    ...p,
+    rMin,
+    rMax,
+    bMin,
+    bMax,
+    n,
+    bladeCount,
+  };
+}
 
-  next.rMax = clamp(
-    toNumber(next.rMax, 2.0),
-    next.rMin + paramRanges.r.minSpan,
-    paramRanges.r.max
-  );
+/**
+ * Aerodynamic and geometric metrics across the entire propeller domain.
+ */
+export function calculateAeroMetrics(params) {
+  const { rMin, rMax, bMin, bMax, n, bladeCount, rpm } = params;
 
-  next.bMin = clamp(
-    toNumber(next.bMin, -90),
-    paramRanges.b.min,
-    paramRanges.b.max - paramRanges.b.minSpan
-  );
+  const b0 = degToRad(bMin);
+  const b1 = degToRad(bMax);
+  const steps = 60;
+  let integralChord = 0;
 
-  next.bMax = clamp(
-    toNumber(next.bMax, 90),
-    next.bMin + paramRanges.b.minSpan,
-    paramRanges.b.max
-  );
+  for (let i = 0; i < steps; i++) {
+    const t0 = i / steps;
+    const t1 = (i + 1) / steps;
+    const midB = b0 + (b1 - b0) * (t0 + t1) * 0.5;
+    const cosB = Math.cos(midB);
+    const ds_db = Math.sqrt(1 + n * n * cosB * cosB);
+    integralChord += ds_db * ((b1 - b0) / steps);
+  }
 
-  next.probeU = clamp01(toNumber(next.probeU, 0.72));
-  next.probeV = clamp01(toNumber(next.probeV, 0.66));
+  const rootChord = rMin * integralChord;
+  const tipChord = rMax * integralChord;
+  const meanChord = ((rMin + rMax) * 0.5) * integralChord;
 
-  next.probeVectorScale = clamp(toNumber(next.probeVectorScale, 0.38), 0.1, 1.2);
-  next.rpm = clamp(toNumber(next.rpm, 60), paramRanges.rpm.min, paramRanges.rpm.max);
+  const bladeArea = 0.5 * (rMax * rMax - rMin * rMin) * integralChord;
+  const totalBladeArea = bladeArea * bladeCount;
 
-  next.isRunning = Boolean(next.isRunning);
-  next.showProbe = Boolean(next.showProbe);
-  next.showIsoR = Boolean(next.showIsoR);
-  next.showIsoB = Boolean(next.showIsoB);
+  const tipCylRadius = rMax * Math.cos(b0);
+  const diskArea = Math.PI * tipCylRadius * tipCylRadius;
+  const ear = diskArea > 1e-6 ? totalBladeArea / diskArea : 0;
 
-  return next;
+  const pitchAngleDeg = radToDeg(Math.atan(1 / n));
+  const advanceRatioJ0 = Math.PI / n;
+
+  const rps = Math.abs(rpm) / 60;
+  const tipSpeed = 2 * Math.PI * rps * tipCylRadius;
+  const theoreticalSpeed = (2 * Math.PI * tipCylRadius / n) * rps;
+
+  return {
+    rootChord,
+    tipChord,
+    meanChord,
+    bladeArea,
+    totalBladeArea,
+    diskArea,
+    ear,
+    pitchAngleDeg,
+    advanceRatioJ0,
+    tipCylRadius,
+    tipSpeed,
+    theoreticalSpeed,
+  };
 }

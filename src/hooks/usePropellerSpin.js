@@ -1,16 +1,11 @@
 import { useFrame } from "@react-three/fiber";
 
-/**
- * Rotates the full propeller assembly around the z-axis.
- * Animation stays separate from geometry generation.
- */
-export function usePropellerSpin(groupRef, rpm, isRunning) {
+export function usePropellerSpin(assemblyRef, rpm, isRunning) {
   useFrame((_, delta) => {
-    if (!groupRef.current || !isRunning || rpm === 0) {
+    if (!isRunning || !assemblyRef.current || rpm === 0) {
       return;
     }
-
-    const angularSpeed = (rpm * Math.PI * 2) / 60;
-    groupRef.current.rotation.z += angularSpeed * delta;
+    const radPerSec = (rpm * Math.PI * 2) / 60;
+    assemblyRef.current.rotation.z += radPerSec * delta;
   });
 }

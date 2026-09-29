@@ -3,33 +3,58 @@ import { Line } from "@react-three/drei";
 import { degToRad, lerp, surfacePoint } from "../geometry/surfaceMath";
 
 /**
- * General surface inspection curve.
- * mode = "r" gives a constant-r iso-curve as b varies.
- * mode = "b" gives a constant-b iso-line as r varies.
+ * Inspection curves:
+ *  - mode = "r": Constant-radius spherical arc (b varies)
+ *  - mode = "b": Constant-elevation radial line (r varies)
+ *  - mode = "cyl": Cylindrical section cut (rho = const, r = rho/cos(b))
  */
 export default function DebugCurve({
   mode = "r",
   params,
   value,
-  samples = 240,
+  samples = 180,
   color = "#ffffff",
+  lineWidth = 2.4,
   rotationZ = 0,
 }) {
   const points = useMemo(() => {
     const pts = [];
 
-    for (let i = 0; i <= samples; i += 1) {
-      const t = i / samples;
+    if (mode === "cyl") {
+      // Cylindrical section cut: rho = const
+      const rho = value;
+      const bMinRad = degToRad(params.bMin);
+      const bMaxRad = degToRad(params.bMax);
 
-      if (mode === "b") {
+      for (let i = 0; i <= samples; i++) {
+        const t = i / samples;
+        const b = lerp(bMinRad, bMaxRad, t);
+        const cosB = Math.cos(b);
+        if (cosB < 1e-4) continue;
+        const r = rho / cosB;
+        if (r >= params.rMin && r <= params.rMax) {
+          const p = surfacePoint(r, b, params.n);
+          pts.push([p.x, p.y, p.z]);
+        }
+      }
+    } else if (mode === "b") {
+      // Constant-b radial ray
+      const b = degToRad(value);
+      for (let i = 0; i <= samples; i++) {
+        const t = i / samples;
         const r = lerp(params.rMin, params.rMax, t);
-        const b = degToRad(value);
         const p = surfacePoint(r, b, params.n);
         pts.push([p.x, p.y, p.z]);
-      } else {
-        const bDeg = lerp(params.bMin, params.bMax, t);
-        const b = degToRad(bDeg);
-        const p = surfacePoint(value, b, params.n);
+      }
+    } else {
+      // Constant-r spherical arc
+      const r = value;
+      const bMinRad = degToRad(params.bMin);
+      const bMaxRad = degToRad(params.bMax);
+      for (let i = 0; i <= samples; i++) {
+        const t = i / samples;
+        const b = lerp(bMinRad, bMaxRad, t);
+        const p = surfacePoint(r, b, params.n);
         pts.push([p.x, p.y, p.z]);
       }
     }
@@ -37,9 +62,11 @@ export default function DebugCurve({
     return pts;
   }, [mode, params, value, samples]);
 
+  if (points.length < 2) return null;
+
   return (
     <group rotation={[0, 0, rotationZ]}>
-      <Line points={points} color={color} lineWidth={2.2} />
+      <Line points={points} color={color} lineWidth={lineWidth} />
     </group>
   );
 }
