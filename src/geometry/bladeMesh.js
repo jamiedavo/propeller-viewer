@@ -1,8 +1,8 @@
 import * as THREE from "three";
-import { degToRad, lerp, surfaceNormal, surfacePoint } from "./surfaceMath";
+import { clamp, degToRad, lerp, surfaceNormal, surfacePoint, cylindricalPitchAngleDeg } from "./surfaceMath";
 
 /**
- * Builds mathematical blade surface data or solid extruded blade data.
+ * Builds mathematical camber sheet or a 100% watertight manifold solid blade.
  */
 export function buildBladeSurfaceData({
   rMin,
@@ -19,12 +19,12 @@ export function buildBladeSurfaceData({
   const bMaxRad = degToRad(bMax);
 
   if (!solidBlade) {
-    // Exact mathematical camber surface
+    // Exact mathematical camber sheet
     const vertexCount = (radialSegments + 1) * (angularSegments + 1);
     const positions = new Float32Array(vertexCount * 3);
     const normals = new Float32Array(vertexCount * 3);
     const uvs = new Float32Array(vertexCount * 2);
-    const customColors = new Float32Array(vertexCount * 3);
+    const colors = new Float32Array(vertexCount * 3);
     const indices = [];
 
     let ptr = 0;
@@ -55,11 +55,11 @@ export function buildBladeSurfaceData({
         uvs[ptr2 + 1] = v;
         ptr2 += 2;
 
-        const cylR = Math.sqrt(p.x * p.x + p.y * p.y);
-        const normCyl = (cylR - rMin * 0.5) / (rMax * 1.05);
-        customColors[ptrCol] = normCyl;
-        customColors[ptrCol + 1] = 0.5 * (1 - normCyl);
-        customColors[ptrCol + 2] = 1 - normCyl;
+        const pitchDeg = cylindricalPitchAngleDeg(b, n);
+        const normPitch = clamp((pitchDeg - 30) / 55, 0, 1);
+        colors[ptrCol] = normPitch;
+        colors[ptrCol + 1] = 0.3 * (1 - normPitch);
+        colors[ptrCol + 2] = 1 - normPitch;
         ptrCol += 3;
       }
     }
@@ -81,143 +81,137 @@ export function buildBladeSurfaceData({
       positions,
       normals,
       uvs,
-      colors: customColors,
+      colors,
       indices: new Uint32Array(indices),
     };
   }
 
-  // Solid Extruded Blade (Hydrofoil profile offset along ±normal)
-  const gridW = radialSegments + 1;
-  const gridH = angularSegments + 1;
+  // 100% Watertight Closed 2-Manifold Solid Blade
+  const M = radialSegments;
+  const N = angularSegments;
+  const gridW = M + 1;
+  const gridH = N + 1;
   const numGridPts = gridW * gridH;
 
   const positions = new Float32Array(numGridPts * 2 * 3);
   const normals = new Float32Array(numGridPts * 2 * 3);
   const uvs = new Float32Array(numGridPts * 2 * 2);
+  const colors = new Float32Array(numGridPts * 2 * 3);
   const indices = [];
 
-  for (let i = 0; i <= radialSegments; i++) {
-    const u = i / radialSegments;
-    const r = lerp(rMin, rMax, u);
-    const spanThickness = bladeThickness * lerp(1.2, 0.45, u);
+  const uIdx = (i, j) => i * gridH + j;
+  const lIdx = (i, j) => numGridPts + i * gridH + j;
 
-    for (let j = 0; j <= angularSegments; j++) {
-      const v = j / angularSegments;
+  for (let i = 0; i <= M; i++) {
+    const u = i / M;
+    const r = lerp(rMin, rMax, u);
+    // Spanwise thickness taper with minimum structural tip thickness floor
+    const spanThickness = Math.max(0.003, bladeThickness * lerp(1.0, 0.45, u));
+
+    for (let j = 0; j <= N; j++) {
+      const v = j / N;
       const b = lerp(bMinRad, bMaxRad, v);
 
       const p = surfacePoint(r, b, n);
       const norm = surfaceNormal(r, b, n);
 
-      // Parabolic foil camber thickness taper
-      const foilProfile = 4 * v * (1 - v);
-      const halfThick = Math.max(0.001, spanThickness * foilProfile * 0.5);
+      // 4-digit aerodynamic profile with rounded leading edge and peak thickness at 30% chord
+      const foilProfile = Math.max(
+        0,
+        2.969 * Math.sqrt(v) - 1.260 * v - 3.516 * v * v + 2.843 * Math.pow(v, 3) - 1.036 * Math.pow(v, 4)
+      );
+      const halfThick = Math.max(0.0008, spanThickness * foilProfile * 0.5);
 
-      const idxUpper = (i * gridH + j) * 3;
-      const idxLower = (numGridPts + i * gridH + j) * 3;
+      const upperPtr = uIdx(i, j) * 3;
+      const lowerPtr = lIdx(i, j) * 3;
 
-      // Suction (top) side
-      positions[idxUpper] = p.x + norm.x * halfThick;
-      positions[idxUpper + 1] = p.y + norm.y * halfThick;
-      positions[idxUpper + 2] = p.z + norm.z * halfThick;
+      // Suction (Upper) face (+norm)
+      positions[upperPtr] = p.x + norm.x * halfThick;
+      positions[upperPtr + 1] = p.y + norm.y * halfThick;
+      positions[upperPtr + 2] = p.z + norm.z * halfThick;
 
-      normals[idxUpper] = norm.x;
-      normals[idxUpper + 1] = norm.y;
-      normals[idxUpper + 2] = norm.z;
+      normals[upperPtr] = norm.x;
+      normals[upperPtr + 1] = norm.y;
+      normals[upperPtr + 2] = norm.z;
 
-      // Pressure (bottom) side
-      positions[idxLower] = p.x - norm.x * halfThick;
-      positions[idxLower + 1] = p.y - norm.y * halfThick;
-      positions[idxLower + 2] = p.z - norm.z * halfThick;
+      // Pressure (Lower) face (-norm)
+      positions[lowerPtr] = p.x - norm.x * halfThick;
+      positions[lowerPtr + 1] = p.y - norm.y * halfThick;
+      positions[lowerPtr + 2] = p.z - norm.z * halfThick;
 
-      normals[idxLower] = -norm.x;
-      normals[idxLower + 1] = -norm.y;
-      normals[idxLower + 2] = -norm.z;
+      normals[lowerPtr] = -norm.x;
+      normals[lowerPtr + 1] = -norm.y;
+      normals[lowerPtr + 2] = -norm.z;
 
-      const uvIdxUpper = (i * gridH + j) * 2;
-      const uvIdxLower = (numGridPts + i * gridH + j) * 2;
-      uvs[uvIdxUpper] = u;
-      uvs[uvIdxUpper + 1] = v;
-      uvs[uvIdxLower] = u;
-      uvs[uvIdxLower + 1] = v;
+      const uvU = uIdx(i, j) * 2;
+      const uvL = lIdx(i, j) * 2;
+      uvs[uvU] = u;
+      uvs[uvU + 1] = v;
+      uvs[uvL] = u;
+      uvs[uvL + 1] = v;
+
+      const pitchDeg = cylindricalPitchAngleDeg(b, n);
+      const normPitch = clamp((pitchDeg - 30) / 55, 0, 1);
+      colors[upperPtr] = normPitch;
+      colors[upperPtr + 1] = 0.3 * (1 - normPitch);
+      colors[upperPtr + 2] = 1 - normPitch;
+      colors[lowerPtr] = normPitch * 0.7;
+      colors[lowerPtr + 1] = 0.2 * (1 - normPitch);
+      colors[lowerPtr + 2] = (1 - normPitch) * 0.7;
     }
   }
 
-  // Upper & Lower Face Triangles
-  for (let i = 0; i < radialSegments; i++) {
-    for (let j = 0; j < angularSegments; j++) {
-      const a = i * gridH + j;
-      const bIdx = a + 1;
-      const c = (i + 1) * gridH + j;
-      const d = c + 1;
-
-      // Upper face
-      indices.push(a, bIdx, c);
-      indices.push(bIdx, d, c);
-
-      // Lower face
-      const al = numGridPts + a;
-      const bl = numGridPts + bIdx;
-      const cl = numGridPts + c;
-      const dl = numGridPts + d;
-
-      indices.push(al, cl, bl);
-      indices.push(bl, cl, dl);
+  // 1. Upper Face Triangles (Outward normal pointing along +N)
+  for (let i = 0; i < M; i++) {
+    for (let j = 0; j < N; j++) {
+      indices.push(uIdx(i, j), uIdx(i + 1, j), uIdx(i, j + 1));
+      indices.push(uIdx(i + 1, j), uIdx(i + 1, j + 1), uIdx(i, j + 1));
     }
   }
 
-  // Side perimeter skirts (Leading edge, Trailing edge, Root, Tip)
-  const addQuad = (p1, p2, p3, p4) => {
-    indices.push(p1, p2, p3);
-    indices.push(p2, p4, p3);
-  };
-
-  // Leading edge (j = 0)
-  for (let i = 0; i < radialSegments; i++) {
-    const u1 = i * gridH + 0;
-    const u2 = (i + 1) * gridH + 0;
-    const l1 = numGridPts + u1;
-    const l2 = numGridPts + u2;
-    addQuad(u1, l1, u2, l2);
+  // 2. Lower Face Triangles (Outward normal pointing along -N)
+  for (let i = 0; i < M; i++) {
+    for (let j = 0; j < N; j++) {
+      indices.push(lIdx(i, j), lIdx(i, j + 1), lIdx(i + 1, j));
+      indices.push(lIdx(i + 1, j), lIdx(i, j + 1), lIdx(i + 1, j + 1));
+    }
   }
 
-  // Trailing edge (j = angularSegments)
-  for (let i = 0; i < radialSegments; i++) {
-    const u1 = i * gridH + angularSegments;
-    const u2 = (i + 1) * gridH + angularSegments;
-    const l1 = numGridPts + u1;
-    const l2 = numGridPts + u2;
-    addQuad(u1, u2, l1, l2);
+  // 3. Leading Edge Wall (j = 0)
+  for (let i = 0; i < M; i++) {
+    indices.push(uIdx(i, 0), lIdx(i, 0), uIdx(i + 1, 0));
+    indices.push(lIdx(i, 0), lIdx(i + 1, 0), uIdx(i + 1, 0));
   }
 
-  // Root edge (i = 0)
-  for (let j = 0; j < angularSegments; j++) {
-    const u1 = j;
-    const u2 = j + 1;
-    const l1 = numGridPts + u1;
-    const l2 = numGridPts + u2;
-    addQuad(u1, u2, l1, l2);
+  // 4. Trailing Edge Wall (j = N)
+  for (let i = 0; i < M; i++) {
+    indices.push(uIdx(i, N), uIdx(i + 1, N), lIdx(i, N));
+    indices.push(lIdx(i, N), uIdx(i + 1, N), lIdx(i + 1, N));
   }
 
-  // Tip edge (i = radialSegments)
-  for (let j = 0; j < angularSegments; j++) {
-    const u1 = radialSegments * gridH + j;
-    const u2 = radialSegments * gridH + j + 1;
-    const l1 = numGridPts + u1;
-    const l2 = numGridPts + u2;
-    addQuad(u1, l1, u2, l2);
+  // 5. Root Wall (i = 0)
+  for (let j = 0; j < N; j++) {
+    indices.push(lIdx(0, j), uIdx(0, j), lIdx(0, j + 1));
+    indices.push(uIdx(0, j), uIdx(0, j + 1), lIdx(0, j + 1));
+  }
+
+  // 6. Tip Wall (i = M)
+  for (let j = 0; j < N; j++) {
+    indices.push(lIdx(M, j), lIdx(M, j + 1), uIdx(M, j));
+    indices.push(uIdx(M, j), lIdx(M, j + 1), uIdx(M, j + 1));
   }
 
   return {
     positions,
     normals,
     uvs,
-    colors: new Float32Array(positions.length),
+    colors,
     indices: new Uint32Array(indices),
   };
 }
 
 /**
- * Downloads standard ASCII STL file of the propeller assembly for 3D printing/CFD.
+ * Downloads standard ASCII STL file of the propeller assembly.
  */
 export function exportAssemblyToSTL(geometry, bladeCount, filename = "parametric_propeller.stl") {
   const posAttr = geometry.getAttribute("position");

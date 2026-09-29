@@ -2,15 +2,17 @@ import React from "react";
 
 /**
  * Technical Shaft and Central Hub Assembly.
- * Includes hub collar matching blade root radius rMin and conical spinner.
+ * hubRadius is dynamically sized to prevent blade root penetration.
  */
 export default function ShaftReference({
   length = 6.0,
-  shaftRadius = 0.035,
-  hubRadius = 0.35,
-  hubLength = 0.45,
+  shaftRadius = 0.025,
+  hubRadius = 0.12,
+  hubLength = 0.4,
   color = "#a5b4c8",
 }) {
+  const spinnerHeight = hubRadius * 1.5;
+
   return (
     <group>
       {/* Central Shaft (aligned along z-axis) */}
@@ -25,9 +27,12 @@ export default function ShaftReference({
         <meshStandardMaterial color="#1b2333" roughness={0.3} metalness={0.7} />
       </mesh>
 
-      {/* Aerodynamic spinner nose cone */}
-      <mesh position={[0, 0, hubLength * 0.5 + 0.16]} rotation={[Math.PI / 2, 0, 0]}>
-        <coneGeometry args={[hubRadius, 0.35, 32]} />
+      {/* Aerodynamic spinner nose cone along +Z */}
+      <mesh
+        position={[0, 0, hubLength * 0.5 + spinnerHeight * 0.5]}
+        rotation={[Math.PI / 2, 0, 0]}
+      >
+        <coneGeometry args={[hubRadius, spinnerHeight, 32]} />
         <meshStandardMaterial color="#2a354a" roughness={0.25} metalness={0.75} />
       </mesh>
     </group>

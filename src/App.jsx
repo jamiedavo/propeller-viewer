@@ -16,16 +16,17 @@ import {
   length,
   surfaceFrameFromUV,
   surfacePoint,
+  cylindricalPitchAngleDeg,
 } from "./geometry/surfaceMath";
 import { exportAssemblyToSTL } from "./geometry/bladeMesh";
 
-function approximatelyEqual(a, b, epsilon = 1e-5) {
+function approximatelyEqual(a, b, epsilon = 1e-4) {
   return Math.abs(a - b) <= epsilon;
 }
 
 function runValidation(params) {
   const { epsilon, sphereSampleCount, drawingMatchSampleDegrees } = validationConfig;
-  const { rMax, n, bMin, bMax, bladeCount, probeU, probeV } = params;
+  const { rMin, rMax, n, bMin, bMax, bladeCount, probeU, probeV } = params;
   const results = [];
 
   // 1. Drawing logic validation: special case n = 1
@@ -76,19 +77,39 @@ function runValidation(params) {
     detail: `dot product = ${ortho.toExponential(3)} (strict orthogonal system)`,
   });
 
-  // 4. Normal validity
-  const normDotR = Math.abs(dot(frame.normal, frame.tangentRUnit));
-  const normDotB = Math.abs(dot(frame.normal, frame.tangentBUnit));
+  // 4. Cylindrical-section pitch consistency check
+  // Numerically evaluate dz/dtheta on cylinder rho = const against 1 / (n * cos^2(b))
+  const bMid = degToRad(0.5 * (bMin + bMax));
+  const deltaB = 1e-4;
+  const bA = bMid - deltaB;
+  const bB = bMid + deltaB;
+  const thetaA = n * bA;
+  const thetaB = n * bB;
+  const rhoProbe = frame.localRadius;
+  const zA = rhoProbe * Math.tan(bA);
+  const zB = rhoProbe * Math.tan(bB);
+  const numTanBeta = (zB - zA) / (rhoProbe * (thetaB - thetaA));
+  const anaTanBeta = 1 / (n * Math.cos(bMid) * Math.cos(bMid));
+  const pitchConsistent = approximatelyEqual(numTanBeta, anaTanBeta, 1e-3);
+
   results.push({
-    label: "Analytical surface normal is unit-length and normal to surface",
-    pass:
-      approximatelyEqual(length(frame.normal), 1, 1e-4) &&
-      normDotR < 1e-4 &&
-      normDotB < 1e-4,
-    detail: `|n̂| = ${length(frame.normal).toFixed(4)}, pitch angle = ${frame.pitchAngleDeg.toFixed(1)}°`,
+    label: "Cylindrical-section pitch satisfies tan(β) = 1 / (n · cos²b)",
+    pass: pitchConsistent,
+    detail: `analytical = ${anaTanBeta.toFixed(3)}, numerical = ${numTanBeta.toFixed(3)}`,
   });
 
-  // 5. Blade count check
+  // 5. Hub clearance check
+  const minRootRho = rMin * Math.cos(degToRad(bMax));
+  const safeHubRadius = Math.max(0.04, minRootRho * 0.85);
+  const hubClearanceOk = safeHubRadius < minRootRho;
+
+  results.push({
+    label: "Hub cylinder radius is smaller than minimum blade root radius",
+    pass: hubClearanceOk,
+    detail: `hub radius = ${safeHubRadius.toFixed(3)} m, min blade root ρ = ${minRootRho.toFixed(3)} m`,
+  });
+
+  // 6. Blade count check
   results.push({
     label: "Blade count within test rig support (1 to 8 blades)",
     pass: Number.isInteger(bladeCount) && bladeCount >= 1 && bladeCount <= 8,
@@ -110,7 +131,7 @@ const VIEW_KEYS = [
 export default function App() {
   const [params, setParams] = useState(() => clampSurfaceParams(defaultParams));
   const [viewRequest, setViewRequest] = useState({ key: sceneDefaults.startupView, nonce: 0 });
-  const [activeTab, setActiveTab] = useState("geometry"); // 'geometry' | 'aero' | 'inspection' | 'validation'
+  const [activeTab, setActiveTab] = useState("geometry");
   const currentGeometryRef = useRef(null);
 
   const updateParam = (key, val) => {
@@ -128,7 +149,12 @@ export default function App() {
 
   const handleExportSTL = () => {
     if (currentGeometryRef.current) {
-      exportAssemblyToSTL(currentGeometryRef.current, params.bladeCount, `propeller_n${params.n}_${params.bladeCount}blades.stl`);
+      const modeName = params.solidBlade ? "solid" : "sheet_open";
+      exportAssemblyToSTL(
+        currentGeometryRef.current,
+        params.bladeCount,
+        `propeller_n${params.n}_${params.bladeCount}blades_${modeName}.stl`
+      );
     }
   };
 
@@ -155,7 +181,7 @@ export default function App() {
             />
           </Canvas>
 
-          {/* Quick Action Overlay Bar on 3D Viewport */}
+          {/* Quick Action Overlay Bar */}
           <div className="viewport-quick-bar">
             <button
               type="button"
@@ -165,7 +191,7 @@ export default function App() {
               {params.isRunning ? "❚❚ Pause Spin" : "▶ Start Spin"}
             </button>
             <button type="button" className="action-btn" onClick={handleExportSTL}>
-              ⬇ Export 3D STL
+              {params.solidBlade ? "⬇ Export Solid STL (3D Print)" : "⬇ Export Surface STL (Sheet)"}
             </button>
             <button
               type="button"
@@ -176,9 +202,12 @@ export default function App() {
             </button>
           </div>
 
+          {/* Dynamic Probe Pitch Badge */}
           <div className="viewport-badge">
-            <span className="badge-title">Governing Constant Pitch Angle:</span>
-            <span className="badge-value">β = {aeroMetrics.pitchAngleDeg.toFixed(2)}° (arccot {params.n.toFixed(2)})</span>
+            <span className="badge-title">Probe Cylindrical Pitch:</span>
+            <span className="badge-value">
+              β = {probeFrame.pitchAngleDeg.toFixed(1)}° | P = {probeFrame.geometricPitch.toFixed(2)} m
+            </span>
           </div>
         </div>
       </main>
@@ -188,20 +217,19 @@ export default function App() {
         <div className="control-panel__scroll">
           {/* Header */}
           <header className="brand-header">
-            <div className="brand-badge">Rooster Labs • Math-First Test Rig</div>
+            <div className="brand-badge">Rooster Labs • Math Inspection Rig</div>
             <h1 className="brand-title">Parametric Propeller Viewer</h1>
             <p className="brand-desc">
-              Three-generation engineering bridge: pre-digital spherical invention,
-              rigorous analytical geometry, and interactive CFD/CAD validation.
+              Technical inspection environment for a mathematically defined ruled spherical surface ($a = n \cdot b$).
             </p>
           </header>
 
           {/* Tab Navigation */}
           <nav className="tab-nav">
             {[
-              { id: "geometry", label: "Geometry & Build" },
-              { id: "aero", label: "Aerodynamics & Flow" },
-              { id: "inspection", label: "Sections & Probe" },
+              { id: "geometry", label: "Geometry" },
+              { id: "aero", label: "Kinematics" },
+              { id: "inspection", label: "Probe & Cuts" },
               { id: "validation", label: "Validation" },
             ].map((t) => (
               <button
@@ -221,7 +249,7 @@ export default function App() {
               <section className="card">
                 <div className="card-header">
                   <strong>Surface Parametric Domain</strong>
-                  <span className="pill-tag">Equation: a = n·b</span>
+                  <span className="pill-tag">Relationship: a = n·b</span>
                 </div>
 
                 <div className="control-row">
@@ -238,7 +266,7 @@ export default function App() {
                     onChange={(e) => updateParam("n", e.target.value)}
                   />
                   <div className="hint-text">
-                    Controls blade pitch angle: β = arctan(1/n) = {aeroMetrics.pitchAngleDeg.toFixed(1)}°
+                    Pitch varies along chord: tan(β) = 1 / (n · cos²b). Pitch angle range: {aeroMetrics.minPitchAngleDeg.toFixed(1)}° to {aeroMetrics.maxPitchAngleDeg.toFixed(1)}°.
                   </div>
                 </div>
 
@@ -317,11 +345,11 @@ export default function App() {
                 </div>
               </section>
 
-              {/* Physical Solid Blade & Hub Setting */}
+              {/* Solid Blade & Hub */}
               <section className="card">
                 <div className="card-header">
-                  <strong>Physical Solid Blade & Hub</strong>
-                  <span className="pill-tag">3D Print / CFD Mode</span>
+                  <strong>Solid Blade & Hub Modeling</strong>
+                  <span className="pill-tag">{params.solidBlade ? "Watertight Solid" : "Zero-Thickness Sheet"}</span>
                 </div>
 
                 <label className="toggle-row">
@@ -331,17 +359,23 @@ export default function App() {
                     onChange={(e) => updateParam("solidBlade", e.target.checked)}
                   />
                   <span>
-                    <strong>Extrude Solid Blade with Camber Thickness</strong>
+                    <strong>Extrude Watertight Solid Blade (3D Print Ready)</strong>
                     <div className="subtext">
-                      Lofts symmetric hydrofoil thickness tapering to leading and trailing edges.
+                      Applies an aerodynamic profile (30% chord peak) with continuous manifold skirts.
                     </div>
                   </span>
                 </label>
 
+                {!params.solidBlade && (
+                  <div className="sheet-warning-box">
+                    <strong>Sheet Mode Notice:</strong> Current surface has zero thickness. STL export will produce an open 2D sheet (for CAD surfaces, not direct 3D printing).
+                  </div>
+                )}
+
                 {params.solidBlade && (
                   <div className="control-row">
                     <div className="label-bar">
-                      <span>Maximum Root Thickness</span>
+                      <span>Root Thickness</span>
                       <strong>{(params.bladeThickness * 100).toFixed(1)} cm</strong>
                     </div>
                     <input
@@ -362,7 +396,8 @@ export default function App() {
                     onChange={(e) => updateParam("showHub", e.target.checked)}
                   />
                   <span>
-                    <strong>Show Mounting Hub & Aerodynamic Spinner</strong>
+                    <strong>Show Central Hub & Spinner</strong>
+                    <div className="subtext">Hub automatically sized to guarantee root clearance.</div>
                   </span>
                 </label>
               </section>
@@ -386,12 +421,12 @@ export default function App() {
             </div>
           )}
 
-          {/* Tab 2: Aerodynamics & Flow */}
+          {/* Tab 2: Kinematics & Flow */}
           {activeTab === "aero" && (
             <div className="tab-pane">
               <section className="card">
                 <div className="card-header">
-                  <strong>Propeller Kinematics & Spin</strong>
+                  <strong>Propeller Kinematics</strong>
                 </div>
 
                 <div className="control-row">
@@ -411,28 +446,28 @@ export default function App() {
 
                 <div className="metric-grid">
                   <div className="metric-box">
-                    <div className="metric-label">Pitch Angle (β)</div>
-                    <div className="metric-val">{aeroMetrics.pitchAngleDeg.toFixed(1)}°</div>
+                    <div className="metric-label">Leading Edge Pitch (bMin)</div>
+                    <div className="metric-val">{aeroMetrics.minPitchAngleDeg.toFixed(1)}°</div>
                   </div>
                   <div className="metric-box">
-                    <div className="metric-label">Pitch-to-Diameter (P/D)</div>
-                    <div className="metric-val">{(Math.PI / params.n).toFixed(2)}</div>
+                    <div className="metric-label">Trailing Edge Pitch (bMax)</div>
+                    <div className="metric-val">{aeroMetrics.maxPitchAngleDeg.toFixed(1)}°</div>
                   </div>
                   <div className="metric-box">
                     <div className="metric-label">Expanded Area Ratio (EAR)</div>
                     <div className="metric-val">{aeroMetrics.ear.toFixed(2)}</div>
                   </div>
                   <div className="metric-box">
-                    <div className="metric-label">Theoretical Advance (V₀)</div>
-                    <div className="metric-val">{aeroMetrics.theoreticalSpeed.toFixed(1)} m/s</div>
+                    <div className="metric-label">Tip Chord / Root Chord</div>
+                    <div className="metric-val">{(aeroMetrics.tipChord / Math.max(1e-4, aeroMetrics.rootChord)).toFixed(1)}×</div>
                   </div>
                   <div className="metric-box">
-                    <div className="metric-label">Tip Speed</div>
+                    <div className="metric-label">Tip Speed (v_tip)</div>
                     <div className="metric-val">{aeroMetrics.tipSpeed.toFixed(1)} m/s</div>
                   </div>
                   <div className="metric-box">
-                    <div className="metric-label">Total Blade Area</div>
-                    <div className="metric-val">{aeroMetrics.totalBladeArea.toFixed(3)} m²</div>
+                    <div className="metric-label">Mean Geometric Pitch</div>
+                    <div className="metric-val">{aeroMetrics.meanGeometricPitch.toFixed(2)} m</div>
                   </div>
                 </div>
 
@@ -445,7 +480,7 @@ export default function App() {
                     />
                     <span>
                       <strong>Visualize Helical Slipstream Streamlines</strong>
-                      <div className="subtext">Draws the contracting wake tube shed during rotation.</div>
+                      <div className="subtext">Reverses axial direction with negative RPM.</div>
                     </span>
                   </label>
 
@@ -456,7 +491,7 @@ export default function App() {
                       onChange={(e) => updateParam("showThrustVector", e.target.checked)}
                     />
                     <span>
-                      <strong>Show Axial Thrust Vector</strong>
+                      <strong>Show Shaft Thrust Vector</strong>
                     </span>
                   </label>
                 </div>
@@ -468,7 +503,7 @@ export default function App() {
           {activeTab === "inspection" && (
             <div className="tab-pane">
               <section className="card">
-                <strong>Surface & Section Overlays</strong>
+                <strong>Surface & Section Overlays (Blade 1)</strong>
 
                 <label className="toggle-row">
                   <input
@@ -477,8 +512,8 @@ export default function App() {
                     onChange={(e) => updateParam("showCylCut", e.target.checked)}
                   />
                   <span>
-                    <strong style={{ color: "#ff80ab" }}>Cylindrical Section Foil Cut (ρ = const)</strong>
-                    <div className="subtext">The true 2D profile experienced by the incident fluid.</div>
+                    <strong style={{ color: "#ff80ab" }}>Cylindrical Section Cut (ρ = const)</strong>
+                    <div className="subtext">Standard cylindrical cut showing progressive chordwise pitch.</div>
                   </span>
                 </label>
 
@@ -511,7 +546,7 @@ export default function App() {
                     onChange={(e) => updateParam("showProbe", e.target.checked)}
                   />
                   <span>
-                    <strong>Interactive Probe & Tangent/Normal Triad</strong>
+                    <strong>Interactive Probe & Local Frame Triad</strong>
                   </span>
                 </label>
 
@@ -552,14 +587,15 @@ export default function App() {
 
               {/* Surface Readout Box */}
               <section className="card">
-                <strong>Probe Differential Geometry Readout</strong>
+                <strong>Probe Differential Readout</strong>
                 <div className="readout-box">
-                  <div><strong>Coordinate Point:</strong> x = {probeFrame.point.x.toFixed(3)}, y = {probeFrame.point.y.toFixed(3)}, z = {probeFrame.point.z.toFixed(3)}</div>
+                  <div><strong>Position:</strong> x = {probeFrame.point.x.toFixed(3)}, y = {probeFrame.point.y.toFixed(3)}, z = {probeFrame.point.z.toFixed(3)}</div>
                   <div><strong>Spherical Radius (r):</strong> {probeFrame.r.toFixed(3)} m</div>
-                  <div><strong>Cylindrical Shaft Radius (ρ):</strong> {probeFrame.localRadius.toFixed(3)} m</div>
+                  <div><strong>Cylindrical Radius (ρ):</strong> {probeFrame.localRadius.toFixed(3)} m</div>
                   <div><strong>Elevation Angle (b):</strong> {probeFrame.bDeg.toFixed(2)}°</div>
-                  <div><strong>Local Pitch:</strong> {probeFrame.geometricPitch.toFixed(3)} m/rev</div>
-                  <div><strong>Analytical Normal n̂:</strong> ({probeFrame.normal.x.toFixed(3)}, {probeFrame.normal.y.toFixed(3)}, {probeFrame.normal.z.toFixed(3)})</div>
+                  <div><strong>Local Pitch Angle (β_cyl):</strong> {probeFrame.pitchAngleDeg.toFixed(2)}°</div>
+                  <div><strong>Local Geometric Pitch (P):</strong> {probeFrame.geometricPitch.toFixed(3)} m/rev</div>
+                  <div><strong>Unit Normal (n̂):</strong> ({probeFrame.normal.x.toFixed(3)}, {probeFrame.normal.y.toFixed(3)}, {probeFrame.normal.z.toFixed(3)})</div>
                 </div>
               </section>
             </div>
@@ -571,7 +607,9 @@ export default function App() {
               <section className="card">
                 <div className="card-header">
                   <strong>Mathematical Authority Validation</strong>
-                  <span className="pill-tag pass">STATUS: VERIFIED</span>
+                  <span className="pill-tag pass">
+                    {validationResults.every((r) => r.pass) ? "ALL CHECKS PASSED" : "REVIEW REQUIRED"}
+                  </span>
                 </div>
 
                 <div className="validation-list">

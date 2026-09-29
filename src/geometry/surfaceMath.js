@@ -84,7 +84,7 @@ export function surfaceDerivatives(r, b, n) {
   const cosNB = Math.cos(nb);
   const sinNB = Math.sin(nb);
 
-  // dS/dr (unit length)
+  // dS/dr
   const tangentR = {
     x: cosB * cosNB,
     y: cosB * sinNB,
@@ -126,6 +126,27 @@ export function surfaceNormal(r, b, n) {
 }
 
 /**
+ * Cylindrical section pitch angle beta_cyl(b):
+ * On a cylinder of radius rho = r*cos(b), z = rho*tan(theta/n).
+ * tan(beta_cyl) = (dz/dtheta)/rho = 1 / (n * cos^2(b)).
+ */
+export function cylindricalPitchAngleDeg(bRad, n) {
+  const cosB = Math.cos(bRad);
+  if (Math.abs(cosB) < 1e-6) return 90;
+  return radToDeg(Math.atan(1 / (n * cosB * cosB)));
+}
+
+/**
+ * Local geometric pitch on a cylindrical section:
+ * P_cyl = 2 * pi * (dz/dtheta) = 2 * pi * rho / (n * cos^2(b)) = 2 * pi * r / (n * cos(b)).
+ */
+export function cylindricalGeometricPitch(r, bRad, n) {
+  const cosB = Math.cos(bRad);
+  if (Math.abs(cosB) < 1e-6 || n <= 0) return 0;
+  return (2 * Math.PI * r) / (n * cosB);
+}
+
+/**
  * Full differential frame at a specified (r, bDeg).
  */
 export function surfaceFrame(r, bDeg, n, vectorScale = 0.4) {
@@ -135,8 +156,8 @@ export function surfaceFrame(r, bDeg, n, vectorScale = 0.4) {
   const norm = surfaceNormal(r, b, n);
 
   const localRadius = Math.sqrt(pt.x * pt.x + pt.y * pt.y);
-  const pitchAngleDeg = radToDeg(Math.atan(1 / n));
-  const geometricPitch = n > 0 ? (2 * Math.PI * localRadius) / n : 0;
+  const pitchAngleDeg = cylindricalPitchAngleDeg(b, n);
+  const geometricPitch = cylindricalGeometricPitch(r, b, n);
 
   return {
     point: pt,
@@ -170,7 +191,7 @@ export function clampSurfaceParams(p) {
   const rMin = Math.max(0.05, Math.min(p.rMin, p.rMax - 0.1));
   const rMax = Math.max(rMin + 0.1, p.rMax);
   const bMin = Math.max(0, Math.min(p.bMin, p.bMax - 2));
-  const bMax = Math.max(bMin + 2, Math.min(88, p.bMax));
+  const bMax = Math.max(bMin + 2, Math.min(85, p.bMax));
   const n = Math.max(0.1, Math.min(4.0, p.n));
   const bladeCount = Math.max(1, Math.min(8, Math.round(p.bladeCount || 2)));
 
@@ -216,12 +237,16 @@ export function calculateAeroMetrics(params) {
   const diskArea = Math.PI * tipCylRadius * tipCylRadius;
   const ear = diskArea > 1e-6 ? totalBladeArea / diskArea : 0;
 
-  const pitchAngleDeg = radToDeg(Math.atan(1 / n));
-  const advanceRatioJ0 = Math.PI / n;
+  const minPitchAngleDeg = cylindricalPitchAngleDeg(b0, n);
+  const maxPitchAngleDeg = cylindricalPitchAngleDeg(b1, n);
+
+  const meanB = 0.5 * (b0 + b1);
+  const meanR = 0.5 * (rMin + rMax);
+  const meanGeometricPitch = cylindricalGeometricPitch(meanR, meanB, n);
 
   const rps = Math.abs(rpm) / 60;
   const tipSpeed = 2 * Math.PI * rps * tipCylRadius;
-  const theoreticalSpeed = (2 * Math.PI * tipCylRadius / n) * rps;
+  const theoreticalSpeedMean = meanGeometricPitch * rps;
 
   return {
     rootChord,
@@ -231,10 +256,11 @@ export function calculateAeroMetrics(params) {
     totalBladeArea,
     diskArea,
     ear,
-    pitchAngleDeg,
-    advanceRatioJ0,
+    minPitchAngleDeg,
+    maxPitchAngleDeg,
+    meanGeometricPitch,
     tipCylRadius,
     tipSpeed,
-    theoreticalSpeed,
+    theoreticalSpeedMean,
   };
 }

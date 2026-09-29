@@ -37,27 +37,42 @@ export default function BladeSurfaceMesh({
     );
   }
 
+  const isHeatmap = colorMode === "pitch" || colorMode === "radius" || colorMode === "thrust";
+
   return (
     <group rotation={[0, 0, rotationZ]}>
-      {/* Back / Pressure Side */}
-      <mesh geometry={geometry} renderOrder={1}>
-        <meshStandardMaterial
-          color={tones.back}
-          side={THREE.BackSide}
-          roughness={0.6}
-          metalness={0.12}
-        />
-      </mesh>
+      {isHeatmap ? (
+        <mesh geometry={geometry}>
+          <meshStandardMaterial
+            vertexColors
+            side={THREE.DoubleSide}
+            roughness={0.5}
+            metalness={0.1}
+          />
+        </mesh>
+      ) : (
+        <>
+          {/* Back / Pressure Side */}
+          <mesh geometry={geometry} renderOrder={1}>
+            <meshStandardMaterial
+              color={tones.back}
+              side={THREE.BackSide}
+              roughness={0.6}
+              metalness={0.12}
+            />
+          </mesh>
 
-      {/* Front / Suction Side */}
-      <mesh geometry={geometry} renderOrder={2}>
-        <meshStandardMaterial
-          color={tones.front}
-          side={THREE.FrontSide}
-          roughness={0.45}
-          metalness={0.18}
-        />
-      </mesh>
+          {/* Front / Suction Side */}
+          <mesh geometry={geometry} renderOrder={2}>
+            <meshStandardMaterial
+              color={tones.front}
+              side={THREE.FrontSide}
+              roughness={0.45}
+              metalness={0.18}
+            />
+          </mesh>
+        </>
+      )}
 
       {/* Sharp boundary edge lines */}
       {showEdges && (

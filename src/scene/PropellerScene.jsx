@@ -5,6 +5,7 @@ import { OrbitControls, Line } from "@react-three/drei";
 import BladeAssembly from "./BladeAssembly";
 import SceneAxes from "./SceneAxes";
 import ShaftReference from "./ShaftReference";
+import { degToRad } from "../geometry/surfaceMath";
 
 function getViewMetrics(rMax) {
   const radius = Math.max(0.5, rMax);
@@ -86,35 +87,37 @@ function CameraSnapController({ controlsRef, viewRequest, rMax }) {
 }
 
 /**
- * Helical Slipstream Flow Streamlines through the propeller disc.
+ * Helical Slipstream Streamlines. Direction and rotation reverse with negative RPM.
  */
 function SlipstreamFlow({ rMax, bladeCount, isRunning, rpm }) {
+  const dir = rpm >= 0 ? 1 : -1;
+
   const streamlines = useMemo(() => {
     const lines = [];
     const numRibbons = bladeCount * 2;
-    const steps = 40;
-    const lengthZ = rMax * 2.8;
+    const steps = 36;
+    const lengthZ = rMax * 2.5;
 
     for (let k = 0; k < numRibbons; k++) {
       const angle0 = (k * 2 * Math.PI) / numRibbons;
-      const radius = rMax * 0.88;
+      const radius = rMax * 0.85;
       const pts = [];
 
-      for (let s = -15; s <= steps; s++) {
+      for (let s = -8; s <= steps; s++) {
         const frac = s / steps;
         const z = frac * lengthZ;
-        const contraction = 1 - 0.15 * Math.tanh(frac * 2);
-        const theta = angle0 + frac * 3.5;
+        const contraction = 1 - 0.16 * Math.tanh(frac * 2.2);
+        const theta = angle0 + frac * 3.2 * dir;
         pts.push([
           radius * contraction * Math.cos(theta),
           radius * contraction * Math.sin(theta),
-          -z,
+          -dir * z,
         ]);
       }
       lines.push(pts);
     }
     return lines;
-  }, [rMax, bladeCount]);
+  }, [rMax, bladeCount, dir]);
 
   const flowRef = useRef();
 
@@ -133,20 +136,24 @@ function SlipstreamFlow({ rMax, bladeCount, isRunning, rpm }) {
 }
 
 /**
- * Thrust Vector Arrow along shaft axis.
+ * Thrust Vector Arrow correctly oriented along Z.
  */
 function ThrustVector({ rMax, rpm }) {
   const dir = rpm >= 0 ? 1 : -1;
-  const arrowLen = Math.max(0.6, rMax * 0.7);
+  const arrowLen = Math.max(0.65, rMax * 0.6);
+  const rotX = dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+  const zBase = dir * (arrowLen * 0.5 + 0.25);
 
   return (
-    <group position={[0, 0, dir * (arrowLen + 0.3)]}>
-      <mesh rotation={[dir > 0 ? 0 : Math.PI, 0, 0]}>
-        <cylinderGeometry args={[0.02, 0.02, arrowLen, 16]} />
-        <meshStandardMaterial color="#00e676" emissive="#00c853" emissiveIntensity={0.5} />
+    <group position={[0, 0, zBase]}>
+      {/* Cylinder shaft along Z */}
+      <mesh rotation={[rotX, 0, 0]}>
+        <cylinderGeometry args={[0.022, 0.022, arrowLen, 16]} />
+        <meshStandardMaterial color="#00e676" emissive="#00c853" emissiveIntensity={0.6} />
       </mesh>
-      <mesh position={[0, 0, dir * 0.5 * arrowLen]} rotation={[dir > 0 ? 0 : Math.PI, 0, 0]}>
-        <coneGeometry args={[0.07, 0.18, 16]} />
+      {/* Cone arrowhead along Z */}
+      <mesh position={[0, 0, dir * (arrowLen * 0.5 + 0.09)]} rotation={[rotX, 0, 0]}>
+        <coneGeometry args={[0.065, 0.18, 16]} />
         <meshStandardMaterial color="#00e676" emissive="#00c853" emissiveIntensity={0.8} />
       </mesh>
     </group>
@@ -154,11 +161,15 @@ function ThrustVector({ rMax, rpm }) {
 }
 
 export default function PropellerScene({ params, viewRequest, onGeometryReady }) {
-  const { rMax, bMin, bMax, rMin, gridOpacity, isRunning, rpm, bladeCount, showFlow, showThrustVector, showHub } = params;
+  const { rMax, bMax, rMin, gridOpacity, isRunning, rpm, bladeCount, showFlow, showThrustVector, showHub } = params;
 
   const controlsRef = useRef(null);
   const gridSize = Math.max(8, rMax * 5.0);
   const gridDivs = Math.max(10, Math.round(gridSize));
+
+  // Dynamically size hub to guarantee the blade root never penetrates inside
+  const minRootRho = rMin * Math.cos(degToRad(bMax));
+  const safeHubRadius = Math.max(0.04, minRootRho * 0.85);
 
   return (
     <>
@@ -166,7 +177,7 @@ export default function PropellerScene({ params, viewRequest, onGeometryReady })
 
       <ambientLight intensity={0.5} />
       <hemisphereLight args={["#bcd7ff", "#080c14", 0.7]} />
-      <directionalLight position={[6, 8, 7]} intensity={1.15} castShadow />
+      <directionalLight position={[6, 8, 7]} intensity={1.15} />
       <directionalLight position={[-6, -4, 5]} intensity={0.4} />
       <directionalLight position={[0, 0, -6]} intensity={0.35} />
 
@@ -184,8 +195,9 @@ export default function PropellerScene({ params, viewRequest, onGeometryReady })
       {showHub && (
         <ShaftReference
           length={Math.max(6.0, rMax * 3.5)}
-          hubRadius={rMin * 0.95}
+          hubRadius={safeHubRadius}
           hubLength={rMax * 0.28}
+          shaftRadius={Math.min(0.025, safeHubRadius * 0.4)}
         />
       )}
 
@@ -194,7 +206,7 @@ export default function PropellerScene({ params, viewRequest, onGeometryReady })
       )}
 
       {showThrustVector && isRunning && (
-        <ThrustVector rMax={rMax} rpm={rpm} isRunning={isRunning} />
+        <ThrustVector rMax={rMax} rpm={rpm} />
       )}
 
       <BladeAssembly {...params} onGeometryReady={onGeometryReady} />
@@ -203,8 +215,6 @@ export default function PropellerScene({ params, viewRequest, onGeometryReady })
         controlsRef={controlsRef}
         viewRequest={viewRequest}
         rMax={rMax}
-        bMin={bMin}
-        bMax={bMax}
       />
 
       <OrbitControls

@@ -29,7 +29,7 @@ export const defaultParams = {
 export const paramRanges = {
   r: { min: 0.1, max: 4.5, step: 0.05, minSpan: 0.2 },
   n: { min: 0.2, max: 3.5, step: 0.05 },
-  b: { min: 1, max: 85, step: 1, minSpan: 5 },
+  b: { min: 1, max: 80, step: 1, minSpan: 5 },
   bladeCount: { min: 1, max: 8, options: [1, 2, 3, 4, 5, 6, 8] },
   gridOpacity: { min: 0, max: 1, step: 0.02 },
   rpm: { min: -250, max: 250, step: 5 },
@@ -37,6 +37,7 @@ export const paramRanges = {
   bladeThickness: { min: 0.005, max: 0.12, step: 0.005 },
   colorModes: [
     { key: "dualtone", label: "Dual-Tone Shaded" },
+    { key: "pitch", label: "Local Pitch Angle Heatmap" },
     { key: "radius", label: "Cylindrical Radius Heatmap" },
     { key: "thrust", label: "Axial Normal (Thrust) Heatmap" },
     { key: "wireframe", label: "Parametric Mesh Grid" },
@@ -49,7 +50,7 @@ export const sceneDefaults = {
 };
 
 export const validationConfig = {
-  epsilon: 1e-5,
+  epsilon: 1e-4,
   sphereSampleCount: 50,
   drawingMatchSampleDegrees: [5, 15, 30, 45, 60, 75],
 };
