@@ -480,7 +480,7 @@ export default function App() {
       <aside className="control-panel">
         <div className="control-panel__scroll">
           <header className="brand-header">
-            <div className="brand-badge">Rooster Labs • Math-First Rig</div>
+            <div className="brand-badge">Davidson HeliSphere • Math-First Rig</div>
             <h1 className="brand-title">Parametric Propeller Viewer</h1>
             <p className="brand-desc">
               Precision inspection environment for ruled spherical surfaces ($a = n \cdot b$).
