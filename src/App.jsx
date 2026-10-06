@@ -124,6 +124,251 @@ const VIEW_KEYS = [
   { key: "side", label: "Side (XZ / S-Curve)" },
   { key: "front", label: "Front (XY)" },
   { key: "top", label: "Top (Disc / Circle)" },
+  { key: "bottom", label: "Bottom" },
+  { key: "back", label: "Back" },
+  { key: "reset", label: "Reset View" },
+];
+
+function Card({ title, children }) {
+  return (
+    <div style={cardStyle}>
+      <strong style={{ display: "block", marginBottom: 12, color: "#f3f6fb" }}>
+        {title}
+      </strong>
+      {children}
+    </div>
+  );
+}
+
+function ProjectHeader({ compact = false }) {
+  return (
+    <div
+      style={{
+        marginBottom: 18,
+        padding: compact ? 16 : 18,
+        borderRadius: 14,
+        border: "1px solid #2a3040",
+        background:
+          "linear-gradient(180deg, rgba(24,30,42,0.96) 0%, rgba(14,18,26,0.98) 100%)",
+        boxShadow: "0 10px 30px rgba(0,0,0,0.22)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 700,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+          color: "#8fa7cf",
+          marginBottom: 10,
+        }}
+      >
+        Davidson HeliSphere
+      </div>
+
+      <h1
+        style={{
+          margin: "0 0 10px 0",
+          fontSize: compact ? 24 : 28,
+          lineHeight: 1.1,
+          letterSpacing: "-0.02em",
+          color: "#f7f9fc",
+        }}
+      >
+        Parametric Propeller Viewer
+      </h1>
+
+      <p
+        style={{
+          margin: 0,
+          fontSize: compact ? 14 : 15,
+          lineHeight: 1.6,
+          color: "#d9e1ec",
+        }}
+      >
+        Davidson HeliSphere brings together legacy invention, enduring mathematical
+        insight, and modern interactive 3D tools across three generations to
+        bring a pre-digital propeller concept back to life.
+      </p>
+    </div>
+  );
+}
+
+function ControlRow({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  format = (v) => v,
+}) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={labelRowStyle}>
+        <span>{label}</span>
+        <strong>{format(value)}</strong>
+      </div>
+
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{ width: "100%" }}
+      />
+    </div>
+  );
+}
+
+function SelectRow({ label, value, options, onChange, hint }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={labelRowStyle}>
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+
+      <select
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{ ...fieldStyle, cursor: "pointer" }}
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option} blades
+          </option>
+        ))}
+      </select>
+
+      {hint && (
+        <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.45, color: "#aab3c2" }}>
+          {hint}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PropFormControl({ value, onSliderChange, onInputChange }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={labelRowStyle}>
+        <span>Angular multiplier (n)</span>
+        <strong>{value.toFixed(2)}</strong>
+      </div>
+
+      <input
+        type="range"
+        min={paramRanges.n.min}
+        max={paramRanges.n.max}
+        step={paramRanges.n.step}
+        value={value}
+        onChange={(e) => onSliderChange(Number(e.target.value))}
+        style={{ width: "100%", marginBottom: 8 }}
+      />
+
+      <input
+        type="number"
+        min={paramRanges.n.min}
+        max={paramRanges.n.max}
+        step={paramRanges.n.step}
+        value={value}
+        onChange={(e) => onInputChange(e.target.value)}
+        style={fieldStyle}
+      />
+    </div>
+  );
+}
+
+function ColorRow({ label, value, onChange }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={labelRowStyle}>
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+
+      <input
+        type="color"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          width: "100%",
+          height: 36,
+          border: "1px solid #2a3040",
+          borderRadius: 6,
+          background: "#11141a",
+          padding: 2,
+          cursor: "pointer",
+        }}
+      />
+    </div>
+  );
+}
+
+function CheckboxRow({ label, checked, onChange, hint }) {
+  return (
+    <label
+      style={{
+        display: "grid",
+        gridTemplateColumns: "18px 1fr",
+        gap: 10,
+        alignItems: "start",
+        marginBottom: 12,
+        cursor: "pointer",
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        style={{ marginTop: 2 }}
+      />
+      <span>
+        <span style={{ display: "block", fontSize: 13, color: "#eef2f7" }}>
+          {label}
+        </span>
+        {hint && (
+          <span style={{ display: "block", fontSize: 12, color: "#aab3c2" }}>
+            {hint}
+          </span>
+        )}
+      </span>
+    </label>
+  );
+}
+
+function ToggleButton({ isRunning, onToggle }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      style={{
+        width: "100%",
+        height: 40,
+        borderRadius: 8,
+        border: "1px solid #2a3040",
+        background: isRunning ? "#22412d" : "#1a2230",
+        color: "#eef2f7",
+        cursor: "pointer",
+        fontSize: 14,
+        fontWeight: 600,
+      }}
+    >
+      {isRunning ? "Stop" : "Start"}
+    </button>
+  );
+}
+
+const VIEW_OPTIONS = [
+  { key: "front", label: "Front" },
+  { key: "back", label: "Back" },
+  { key: "top", label: "Top" },
+  { key: "bottom", label: "Bottom" },
+  { key: "side", label: "Side" },
   { key: "isometric", label: "Isometric" },
   { key: "shaft", label: "Shaft Axial" },
   { key: "reset", label: "Reset View" },

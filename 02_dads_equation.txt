@@ -1,0 +1,4 @@
+A radial line of length r extends from the origin of the xyz-axes.
+The line makes an angle b with the xy-plane.
+The projection of the radial line onto the xy-plane makes an angle a with the x axis.
+If angle a equals angle b draw the shape described by the line as angle b goes from minus 90 degrees to plus 90 degrees
