@@ -4,7 +4,6 @@ import "./App.css";
 import {
   defaultParams,
   paramRanges,
-  modelPresets,
   sceneDefaults,
   validationConfig,
 } from "./config/defaultParams";
@@ -14,10 +13,8 @@ import {
   clampSurfaceParams,
   degToRad,
   dot,
-  length,
   surfaceFrameFromUV,
   surfacePoint,
-  cylindricalPitchAngleDeg,
 } from "./geometry/surfaceMath";
 import { exportAssemblyToSTL } from "./geometry/bladeMesh";
 
@@ -27,7 +24,7 @@ function approximatelyEqual(a, b, epsilon = 1e-4) {
 
 function runValidation(params) {
   const { epsilon, sphereSampleCount, drawingMatchSampleDegrees } = validationConfig;
-  const { rMin, rMax, n, bMin, bMax, bladeCount, probeU, probeV } = params;
+  const { rMax, n, bMin, bMax, bladeCount, probeU, probeV } = params;
   const results = [];
 
   // 1. Drawing logic validation: special case n = 1 matches Dad's equations
@@ -98,18 +95,6 @@ function runValidation(params) {
     detail: `analytical = ${anaTanBeta.toFixed(3)}, numerical = ${numTanBeta.toFixed(3)}`,
   });
 
-  // 5. Hub clearance check
-  const maxAbsB = Math.max(Math.abs(bMin), Math.abs(bMax));
-  const minRootRho = rMin * Math.cos(degToRad(maxAbsB));
-  const safeHubRadius = Math.max(0.002, minRootRho * 0.85);
-  const hubClearanceOk = safeHubRadius <= minRootRho;
-
-  results.push({
-    label: "Hub cylinder radius clears minimum blade root at extreme |b|",
-    pass: hubClearanceOk,
-    detail: `hub radius = ${(safeHubRadius * 1000).toFixed(1)} mm, min blade root ρ = ${(minRootRho * 1000).toFixed(1)} mm`,
-  });
-
   // 6. Blade count check
   results.push({
     label: "Blade count within test rig support (1 to 8 blades)",
@@ -121,260 +106,18 @@ function runValidation(params) {
 }
 
 const VIEW_KEYS = [
-  { key: "side", label: "Side (XZ / S-Curve)" },
-  { key: "front", label: "Front (XY)" },
-  { key: "top", label: "Top (Disc / Circle)" },
+  { key: "side", label: "Side (yz)" },
+  { key: "front", label: "Front (xz)" },
+  { key: "top", label: "Top (xy)" },
   { key: "bottom", label: "Bottom" },
   { key: "back", label: "Back" },
-  { key: "reset", label: "Reset View" },
-];
-
-function Card({ title, children }) {
-  return (
-    <div style={cardStyle}>
-      <strong style={{ display: "block", marginBottom: 12, color: "#f3f6fb" }}>
-        {title}
-      </strong>
-      {children}
-    </div>
-  );
-}
-
-function ProjectHeader({ compact = false }) {
-  return (
-    <div
-      style={{
-        marginBottom: 18,
-        padding: compact ? 16 : 18,
-        borderRadius: 14,
-        border: "1px solid #2a3040",
-        background:
-          "linear-gradient(180deg, rgba(24,30,42,0.96) 0%, rgba(14,18,26,0.98) 100%)",
-        boxShadow: "0 10px 30px rgba(0,0,0,0.22)",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 700,
-          letterSpacing: "0.14em",
-          textTransform: "uppercase",
-          color: "#8fa7cf",
-          marginBottom: 10,
-        }}
-      >
-        Davidson HeliSphere
-      </div>
-
-      <h1
-        style={{
-          margin: "0 0 10px 0",
-          fontSize: compact ? 24 : 28,
-          lineHeight: 1.1,
-          letterSpacing: "-0.02em",
-          color: "#f7f9fc",
-        }}
-      >
-        Parametric Propeller Viewer
-      </h1>
-
-      <p
-        style={{
-          margin: 0,
-          fontSize: compact ? 14 : 15,
-          lineHeight: 1.6,
-          color: "#d9e1ec",
-        }}
-      >
-        Davidson HeliSphere brings together legacy invention, enduring mathematical
-        insight, and modern interactive 3D tools across three generations to
-        bring a pre-digital propeller concept back to life.
-      </p>
-    </div>
-  );
-}
-
-function ControlRow({
-  label,
-  value,
-  min,
-  max,
-  step,
-  onChange,
-  format = (v) => v,
-}) {
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={labelRowStyle}>
-        <span>{label}</span>
-        <strong>{format(value)}</strong>
-      </div>
-
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        style={{ width: "100%" }}
-      />
-    </div>
-  );
-}
-
-function SelectRow({ label, value, options, onChange, hint }) {
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={labelRowStyle}>
-        <span>{label}</span>
-        <strong>{value}</strong>
-      </div>
-
-      <select
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        style={{ ...fieldStyle, cursor: "pointer" }}
-      >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option} blades
-          </option>
-        ))}
-      </select>
-
-      {hint && (
-        <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.45, color: "#aab3c2" }}>
-          {hint}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PropFormControl({ value, onSliderChange, onInputChange }) {
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={labelRowStyle}>
-        <span>Angular multiplier (n)</span>
-        <strong>{value.toFixed(2)}</strong>
-      </div>
-
-      <input
-        type="range"
-        min={paramRanges.n.min}
-        max={paramRanges.n.max}
-        step={paramRanges.n.step}
-        value={value}
-        onChange={(e) => onSliderChange(Number(e.target.value))}
-        style={{ width: "100%", marginBottom: 8 }}
-      />
-
-      <input
-        type="number"
-        min={paramRanges.n.min}
-        max={paramRanges.n.max}
-        step={paramRanges.n.step}
-        value={value}
-        onChange={(e) => onInputChange(e.target.value)}
-        style={fieldStyle}
-      />
-    </div>
-  );
-}
-
-function ColorRow({ label, value, onChange }) {
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={labelRowStyle}>
-        <span>{label}</span>
-        <strong>{value}</strong>
-      </div>
-
-      <input
-        type="color"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{
-          width: "100%",
-          height: 36,
-          border: "1px solid #2a3040",
-          borderRadius: 6,
-          background: "#11141a",
-          padding: 2,
-          cursor: "pointer",
-        }}
-      />
-    </div>
-  );
-}
-
-function CheckboxRow({ label, checked, onChange, hint }) {
-  return (
-    <label
-      style={{
-        display: "grid",
-        gridTemplateColumns: "18px 1fr",
-        gap: 10,
-        alignItems: "start",
-        marginBottom: 12,
-        cursor: "pointer",
-      }}
-    >
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        style={{ marginTop: 2 }}
-      />
-      <span>
-        <span style={{ display: "block", fontSize: 13, color: "#eef2f7" }}>
-          {label}
-        </span>
-        {hint && (
-          <span style={{ display: "block", fontSize: 12, color: "#aab3c2" }}>
-            {hint}
-          </span>
-        )}
-      </span>
-    </label>
-  );
-}
-
-function ToggleButton({ isRunning, onToggle }) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      style={{
-        width: "100%",
-        height: 40,
-        borderRadius: 8,
-        border: "1px solid #2a3040",
-        background: isRunning ? "#22412d" : "#1a2230",
-        color: "#eef2f7",
-        cursor: "pointer",
-        fontSize: 14,
-        fontWeight: 600,
-      }}
-    >
-      {isRunning ? "Stop" : "Start"}
-    </button>
-  );
-}
-
-const VIEW_OPTIONS = [
-  { key: "front", label: "Front" },
-  { key: "back", label: "Back" },
-  { key: "top", label: "Top" },
-  { key: "bottom", label: "Bottom" },
-  { key: "side", label: "Side" },
-  { key: "isometric", label: "Isometric" },
-  { key: "shaft", label: "Shaft Axial" },
+  { key: "isometric", label: "3D View" },
   { key: "reset", label: "Reset View" },
 ];
 
 function formatRadius(val) {
+  if (!Number.isFinite(val)) return "∞ (at pole)";
+  if (Math.abs(val) < 5e-7) val = 0; // avoid showing "-0 mm"
   if (Math.abs(val) < 0.1) {
     return `${(val * 1000).toFixed(0)} mm`;
   }
@@ -396,14 +139,6 @@ export default function App() {
     });
   };
 
-  const applyPreset = (preset) => {
-    setParams((prev) => {
-      const merged = { ...prev, ...preset.params, isRunning: false };
-      return clampSurfaceParams(merged);
-    });
-    setViewRequest((v) => ({ key: "side", nonce: v.nonce + 1 }));
-  };
-
   const validationResults = useMemo(() => runValidation(params), [params]);
   const aeroMetrics = useMemo(() => calculateAeroMetrics(params), [params]);
   const probeFrame = useMemo(() => surfaceFrameFromUV(params, params.probeU, params.probeV), [params]);
@@ -414,6 +149,7 @@ export default function App() {
       exportAssemblyToSTL(
         currentGeometryRef.current,
         params.bladeCount,
+        params.showShaft ? { radius: (params.rMax * params.shaftRatio) / 2, length: params.rMax * 2 } : null,
         `propeller_n${params.n}_${params.bladeCount}blades_${modeName}.stl`
       );
     }
@@ -426,7 +162,7 @@ export default function App() {
         <div className="viewer-stage">
           <Canvas
             camera={{
-              position: [2.5, 0, 0],
+              position: [3.2, 2.9, 2.4],
               up: [0, 0, 1],
               fov: sceneDefaults.cameraFov,
               near: 0.001,
@@ -459,10 +195,10 @@ export default function App() {
               className="action-btn"
               onClick={() => {
                 updateParam("isRunning", false);
-                setViewRequest((v) => ({ key: "side", nonce: v.nonce + 1 }));
+                setViewRequest((v) => ({ key: "isometric", nonce: v.nonce + 1 }));
               }}
             >
-              ⟲ Reset & Align Side (XZ)
+              ⟲ Reset View
             </button>
           </div>
 
@@ -483,7 +219,7 @@ export default function App() {
             <div className="brand-badge">Davidson HeliSphere • Math-First Rig</div>
             <h1 className="brand-title">Parametric Propeller Viewer</h1>
             <p className="brand-desc">
-              Precision inspection environment for ruled spherical surfaces ($a = n \cdot b$).
+              A propeller blade whose twist follows a = n · b.
             </p>
           </header>
 
@@ -509,38 +245,17 @@ export default function App() {
           {/* TAB 1: GEOMETRY */}
           {activeTab === "geometry" && (
             <div className="tab-pane">
-              {/* 1-Click Presets */}
+              {/* Main controls */}
               <section className="card">
                 <div className="card-header">
-                  <strong>1-Click Model Presets</strong>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {modelPresets.map((preset) => (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      className="chip-btn"
-                      style={{ textAlign: "left", padding: "8px 10px" }}
-                      onClick={() => applyPreset(preset)}
-                    >
-                      <div style={{ fontWeight: 600, color: "#fff" }}>{preset.label}</div>
-                      <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>{preset.desc}</div>
-                    </button>
-                  ))}
-                </div>
-              </section>
-
-              {/* Parametric Domain Sliders */}
-              <section className="card">
-                <div className="card-header">
-                  <strong>Surface Parametric Domain</strong>
-                  <span className="pill-tag">Relationship: a = n·b</span>
+                  <strong>Propeller</strong>
+                  <span className="pill-tag">a = n · b</span>
                 </div>
 
                 <div className="control-row">
                   <div className="label-bar">
-                    <span>Angular Multiplier (n)</span>
-                    <strong>{params.n.toFixed(2)}</strong>
+                    <span>Angular multiplier (n)</span>
+                    <strong>{params.n.toFixed(3)}</strong>
                   </div>
                   <input
                     type="range"
@@ -550,15 +265,29 @@ export default function App() {
                     value={params.n}
                     onChange={(e) => updateParam("n", e.target.value)}
                   />
-                  <div className="hint-text">
-                    Pitch varies along chord: tan(β) = 1 / (n · cos²b).
+                  <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                    <input
+                      type="number"
+                      min={paramRanges.n.min}
+                      max={paramRanges.n.max}
+                      step={0.001}
+                      value={params.n}
+                      onChange={(e) => updateParam("n", e.target.value)}
+                      style={{ flex: 1, minWidth: 0 }}
+                    />
+                    <button type="button" className="chip-btn" onClick={() => updateParam("n", defaultParams.n)}>
+                      1.618
+                    </button>
+                    <button type="button" className="chip-btn" onClick={() => updateParam("n", 1)}>
+                      1 (original)
+                    </button>
                   </div>
                 </div>
 
                 <div className="control-row">
                   <div className="label-bar">
-                    <span>Blade Count</span>
-                    <strong>{params.bladeCount} Blades</strong>
+                    <span>Blades</span>
+                    <strong>{params.bladeCount}</strong>
                   </div>
                   <div className="button-group">
                     {paramRanges.bladeCount.options.map((opt) => (
@@ -576,22 +305,7 @@ export default function App() {
 
                 <div className="control-row">
                   <div className="label-bar">
-                    <span>Root Radius (rMin)</span>
-                    <strong>{formatRadius(params.rMin)}</strong>
-                  </div>
-                  <input
-                    type="range"
-                    min={paramRanges.r.min}
-                    max={Math.max(paramRanges.r.min, params.rMax - paramRanges.r.minSpan)}
-                    step={paramRanges.r.step}
-                    value={params.rMin}
-                    onChange={(e) => updateParam("rMin", e.target.value)}
-                  />
-                </div>
-
-                <div className="control-row">
-                  <div className="label-bar">
-                    <span>Tip Radius (rMax)</span>
+                    <span>Size (tip radius)</span>
                     <strong>{formatRadius(params.rMax)}</strong>
                   </div>
                   <input
@@ -604,36 +318,73 @@ export default function App() {
                   />
                 </div>
 
-                <div className="control-row">
-                  <div className="label-bar">
-                    <span>Elevation Span (bMin → bMax)</span>
-                    <strong>{params.bMin > 0 ? `+${params.bMin}` : params.bMin}° — {params.bMax > 0 ? `+${params.bMax}` : params.bMax}°</strong>
-                  </div>
-                  <div className="dual-slider">
+                <details style={{ marginTop: 8 }}>
+                  <summary style={{ cursor: "pointer", color: "var(--text-dim)", fontSize: 13 }}>
+                    Advanced
+                  </summary>
+
+                  <div className="control-row" style={{ marginTop: 12 }}>
+                    <div className="label-bar">
+                      <span>Inner cut-off radius</span>
+                      <strong>{formatRadius(params.rMin)}</strong>
+                    </div>
                     <input
                       type="range"
-                      min={paramRanges.b.min}
-                      max={params.bMax - paramRanges.b.minSpan}
-                      step={paramRanges.b.step}
-                      value={params.bMin}
-                      onChange={(e) => updateParam("bMin", e.target.value)}
+                      min={paramRanges.r.min}
+                      max={Math.max(paramRanges.r.min, params.rMax - paramRanges.r.minSpan)}
+                      step={paramRanges.r.step}
+                      value={params.rMin}
+                      onChange={(e) => updateParam("rMin", e.target.value)}
                     />
-                    <input
-                      type="range"
-                      min={params.bMin + paramRanges.b.minSpan}
-                      max={paramRanges.b.max}
-                      step={paramRanges.b.step}
-                      value={params.bMax}
-                      onChange={(e) => updateParam("bMax", e.target.value)}
-                    />
+                    <div className="hint-text">
+                      Every blade line starts at the centre point and fans outwards. This slices the
+                      pointed centre off so the blade has a flat inner edge. Smaller = more blade
+                      near the centre.
+                    </div>
                   </div>
-                </div>
+
+                  <div className="control-row">
+                    <div className="label-bar">
+                      <span>Elevation span (bMin → bMax)</span>
+                      <strong>{params.bMin}° → {params.bMax > 0 ? `+${params.bMax}` : params.bMax}°</strong>
+                    </div>
+                    <div className="dual-slider">
+                      <input
+                        type="range"
+                        min={paramRanges.b.min}
+                        max={params.bMax - paramRanges.b.minSpan}
+                        step={paramRanges.b.step}
+                        value={params.bMin}
+                        onChange={(e) => updateParam("bMin", e.target.value)}
+                      />
+                      <input
+                        type="range"
+                        min={params.bMin + paramRanges.b.minSpan}
+                        max={paramRanges.b.max}
+                        step={paramRanges.b.step}
+                        value={params.bMax}
+                        onChange={(e) => updateParam("bMax", e.target.value)}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="chip-btn"
+                      style={{ marginTop: 6 }}
+                      onClick={() => {
+                        updateParam("bMin", -90);
+                        updateParam("bMax", 90);
+                      }}
+                    >
+                      Reset to full −90° → +90°
+                    </button>
+                  </div>
+                </details>
               </section>
 
               {/* Solid Blade / Hub Setup */}
               <section className="card">
                 <div className="card-header">
-                  <strong>Solid Blade & Hub Modeling</strong>
+                  <strong>Material</strong>
                   <span className="pill-tag">{params.solidBlade ? "Watertight Solid" : "Zero-Thickness Sheet"}</span>
                 </div>
 
@@ -677,13 +428,31 @@ export default function App() {
                 <label className="toggle-row">
                   <input
                     type="checkbox"
-                    checked={params.showHub}
-                    onChange={(e) => updateParam("showHub", e.target.checked)}
+                    checked={params.showShaft}
+                    onChange={(e) => updateParam("showShaft", e.target.checked)}
                   />
                   <span>
-                    <strong>Show Central Hub & Spinner</strong>
+                    <strong>Include shaft</strong>
+                    <small>Straight rod on the axis that joins the blades. Included in the STL export.</small>
                   </span>
                 </label>
+
+                {params.showShaft && (
+                  <div className="control-row">
+                    <div className="label-bar">
+                      <span>Shaft diameter</span>
+                      <strong>{formatRadius(params.rMax * params.shaftRatio)}</strong>
+                    </div>
+                    <input
+                      type="range"
+                      min={paramRanges.shaftRatio.min}
+                      max={paramRanges.shaftRatio.max}
+                      step={paramRanges.shaftRatio.step}
+                      value={params.shaftRatio}
+                      onChange={(e) => updateParam("shaftRatio", e.target.value)}
+                    />
+                  </div>
+                )}
               </section>
 
               {/* Camera Presets */}

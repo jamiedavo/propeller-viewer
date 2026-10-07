@@ -5,16 +5,28 @@ import { OrbitControls, Line } from "@react-three/drei";
 import BladeAssembly from "./BladeAssembly";
 import SceneAxes from "./SceneAxes";
 import ShaftReference from "./ShaftReference";
-import { degToRad } from "../geometry/surfaceMath";
 
 /**
  * Fully auto-scales camera distances whether rMax is 0.05m (50mm) or 4.0m.
  */
-function getViewPreset(viewKey, rMax) {
+/**
+ * Distance at which a sphere of radius r fits fully in view, for the
+ * current camera FOV and window aspect (so it works on tall and wide screens).
+ */
+function fitDistance(r, camera) {
+  const vFov = (camera.fov * Math.PI) / 180;
+  const aspect = camera.aspect || 1;
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+  const limiting = Math.min(vFov, hFov);
+  return (r * 1.35) / Math.sin(limiting / 2);
+}
+
+function getViewPreset(viewKey, rMax, camera) {
   const r = Math.max(0.04, rMax);
-  const lateral = r * 2.5;
-  const axial = r * 2.2;
-  const iso = new THREE.Vector3(r * 2.0, r * 1.8, r * 1.5);
+  const d = fitDistance(r, camera);
+  const lateral = d;
+  const axial = d;
+  const iso = new THREE.Vector3(1, 0.9, 0.75).normalize().multiplyScalar(d);
 
   switch (viewKey) {
     case "front":
@@ -46,7 +58,7 @@ function CameraSnapController({ controlsRef, viewRequest, rMax }) {
 
   useEffect(() => {
     if (!controlsRef.current || initialized.current) return;
-    const preset = getViewPreset("side", rMax);
+    const preset = getViewPreset("isometric", rMax, camera);
     camera.position.copy(preset.position);
     camera.up.copy(preset.up);
     controlsRef.current.target.copy(preset.target);
@@ -57,12 +69,12 @@ function CameraSnapController({ controlsRef, viewRequest, rMax }) {
 
   useEffect(() => {
     if (!viewRequest || viewRequest.nonce === 0) return;
-    const preset = getViewPreset(viewRequest.key, rMax);
+    const preset = getViewPreset(viewRequest.key, rMax, camera);
     targetPos.current.copy(preset.position);
     targetLook.current.copy(preset.target);
     targetUp.current.copy(preset.up);
     animating.current = true;
-  }, [viewRequest, rMax]);
+  }, [viewRequest, rMax, camera]);
 
   useFrame((_, delta) => {
     if (!animating.current || !controlsRef.current) return;
@@ -151,15 +163,11 @@ function ThrustVector({ rMax, rpm }) {
 }
 
 export default function PropellerScene({ params, viewRequest, onGeometryReady }) {
-  const { rMax, bMin, bMax, rMin, gridOpacity, isRunning, rpm, bladeCount, showFlow, showThrustVector, showHub } = params;
+  const { rMax, gridOpacity, isRunning, rpm, bladeCount, showFlow, showThrustVector, showShaft, shaftRatio } = params;
 
   const controlsRef = useRef(null);
   const gridSize = Math.max(0.3, rMax * 4.0);
   const gridDivs = Math.max(10, Math.round(gridSize / Math.max(0.05, rMax * 0.2)));
-
-  const maxAbsB = Math.max(Math.abs(bMin), Math.abs(bMax));
-  const minRootRho = rMin * Math.cos(degToRad(maxAbsB));
-  const safeHubRadius = Math.max(0.002, minRootRho * 0.85);
 
   return (
     <>
@@ -181,14 +189,7 @@ export default function PropellerScene({ params, viewRequest, onGeometryReady })
 
       <SceneAxes length={Math.max(0.1, rMax * 1.4)} />
 
-      {showHub && (
-        <ShaftReference
-          length={Math.max(0.2, rMax * 3.2)}
-          hubRadius={safeHubRadius}
-          hubLength={Math.max(0.02, rMax * 0.35)}
-          shaftRadius={Math.max(0.001, safeHubRadius * 0.4)}
-        />
-      )}
+      {showShaft && <ShaftReference length={rMax * 2} radius={(rMax * shaftRatio) / 2} />}
 
       {showFlow && isRunning && (
         <SlipstreamFlow rMax={rMax} bladeCount={bladeCount} isRunning={isRunning} rpm={rpm} />
@@ -212,7 +213,7 @@ export default function PropellerScene({ params, viewRequest, onGeometryReady })
         dampingFactor={0.08}
         enablePan={false}
         minDistance={Math.max(0.02, rMax * 0.3)}
-        maxDistance={Math.max(0.5, rMax * 12)}
+        maxDistance={Math.max(0.5, rMax * 14)}
         target={[0, 0, 0]}
       />
     </>
