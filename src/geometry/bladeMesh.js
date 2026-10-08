@@ -213,7 +213,7 @@ export function buildBladeSurfaceData({
 /**
  * Downloads standard ASCII STL file of the propeller assembly.
  */
-export function exportAssemblyToSTL(geometry, bladeCount, filename = "parametric_propeller.stl") {
+export function exportAssemblyToSTL(geometry, bladeCount, shaft, filename = "parametric_propeller.stl") {
   const posAttr = geometry.getAttribute("position");
   const idxAttr = geometry.getIndex();
 
@@ -224,10 +224,13 @@ export function exportAssemblyToSTL(geometry, bladeCount, filename = "parametric
     const cosA = Math.cos(rotAngle);
     const sinA = Math.sin(rotAngle);
 
+    // The app works in metres; STL has no units and slicers/CAD read it as
+    // millimetres, so scale by 1000 on the way out.
+    const MM = 1000;
     const transform = (v) => ({
-      x: v.x * cosA - v.y * sinA,
-      y: v.x * sinA + v.y * cosA,
-      z: v.z,
+      x: (v.x * cosA - v.y * sinA) * MM,
+      y: (v.x * sinA + v.y * cosA) * MM,
+      z: v.z * MM,
     });
 
     const triCount = idxAttr ? idxAttr.count / 3 : posAttr.count / 3;
@@ -252,6 +255,31 @@ export function exportAssemblyToSTL(geometry, bladeCount, filename = "parametric
       stl += `      vertex ${p3.x.toExponential(6)} ${p3.y.toExponential(6)} ${p3.z.toExponential(6)}\n`;
       stl += "    endloop\n";
       stl += "  endfacet\n";
+    }
+  }
+
+  // Optional straight shaft along z, from -length/2 to +length/2 (closed cylinder)
+  if (shaft) {
+    const MM = 1000;
+    const SEG = 48;
+    const R = shaft.radius * MM;
+    const h = (shaft.length * MM) / 2;
+    const ring = (k, z) => [R * Math.cos((2 * Math.PI * k) / SEG), R * Math.sin((2 * Math.PI * k) / SEG), z];
+    const facet = (a, b, c) => {
+      const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
+      const vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+      let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      const l = Math.hypot(nx, ny, nz) || 1;
+      nx /= l; ny /= l; nz /= l;
+      let out = `  facet normal ${nx.toExponential(6)} ${ny.toExponential(6)} ${nz.toExponential(6)}\n    outer loop\n`;
+      for (const p of [a, b, c]) out += `      vertex ${p[0].toExponential(6)} ${p[1].toExponential(6)} ${p[2].toExponential(6)}\n`;
+      return out + "    endloop\n  endfacet\n";
+    };
+    for (let k = 0; k < SEG; k++) {
+      const b0 = ring(k, -h), b1 = ring(k + 1, -h), t0 = ring(k, h), t1 = ring(k + 1, h);
+      stl += facet(b0, b1, t1) + facet(b0, t1, t0); // side (outward)
+      stl += facet([0, 0, h], t0, t1); // top cap (+z)
+      stl += facet([0, 0, -h], b1, b0); // bottom cap (-z)
     }
   }
 

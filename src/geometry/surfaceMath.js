@@ -118,7 +118,8 @@ export function cylindricalPitchAngleDeg(bRad, n) {
 
 export function cylindricalGeometricPitch(r, bRad, n) {
   const cosB = Math.cos(bRad);
-  if (Math.abs(cosB) < 1e-6 || n <= 0) return 0;
+  if (n <= 0) return 0;
+  if (Math.abs(cosB) < 1e-6) return Infinity; // pole: pitch is unbounded
   return (2 * Math.PI * r) / (n * cosB);
 }
 
@@ -165,9 +166,9 @@ export function clampSurfaceParams(p) {
   const rMin = Math.max(0.005, Math.min(p.rMin, p.rMax - 0.01));
   const rMax = Math.max(rMin + 0.01, Math.min(10.0, p.rMax));
 
-  // Clamping from -89 to +89
-  const bMin = Math.max(-89, Math.min(p.bMin, p.bMax - 1));
-  const bMax = Math.max(bMin + 1, Math.min(89, p.bMax));
+  // Full pole-to-pole range: -90 to +90
+  const bMin = Math.max(-90, Math.min(p.bMin, p.bMax - 1));
+  const bMax = Math.max(bMin + 1, Math.min(90, p.bMax));
 
   const n = Math.max(0.1, Math.min(4.0, p.n));
   const bladeCount = Math.max(1, Math.min(8, Math.round(p.bladeCount || 2)));
