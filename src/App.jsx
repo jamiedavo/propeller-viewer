@@ -5,105 +5,16 @@ import {
   defaultParams,
   paramRanges,
   sceneDefaults,
-  validationConfig, patentProfiles } from "./config/defaultParams";
+  patentProfiles,
+} from "./config/defaultParams";
 import ProfileThumb from "./components/ProfileThumb";
 import PropellerScene from "./scene/PropellerScene";
 import {
   calculateAeroMetrics,
   clampSurfaceParams,
-  degToRad,
-  dot,
   surfaceFrameFromUV,
-  surfacePoint,
 } from "./geometry/surfaceMath";
 import { exportAssemblyToSTL } from "./geometry/bladeMesh";
-
-function approximatelyEqual(a, b, epsilon = 1e-4) {
-  return Math.abs(a - b) <= epsilon;
-}
-
-function runValidation(params) {
-  const { epsilon, sphereSampleCount, drawingMatchSampleDegrees } = validationConfig;
-  const { rMax, n, bMin, bMax, bladeCount, probeU, probeV } = params;
-  const results = [];
-
-  // 1. Drawing logic validation: special case n = 1 matches Dad's equations
-  let drawingMatch = true;
-  for (const deg of drawingMatchSampleDegrees) {
-    const b = degToRad(deg);
-    const actual = surfacePoint(rMax, b, 1);
-    const expected = {
-      x: rMax * Math.cos(b) * Math.cos(b),
-      y: rMax * Math.sin(b) * Math.cos(b),
-      z: rMax * Math.sin(b),
-    };
-    if (
-      !approximatelyEqual(actual.x, expected.x, epsilon) ||
-      !approximatelyEqual(actual.y, expected.y, epsilon) ||
-      !approximatelyEqual(actual.z, expected.z, epsilon)
-    ) {
-      drawingMatch = false;
-      break;
-    }
-  }
-  results.push({
-    label: "180° / 180° case matches the original drawing equations",
-    pass: drawingMatch,
-  });
-
-  // 2. Sphere identity check: x² + y² + z² = r²
-  let maxSphereError = 0;
-  for (let i = 0; i <= sphereSampleCount; i++) {
-    const b = degToRad(bMin + (bMax - bMin) * (i / sphereSampleCount));
-    const pt = surfacePoint(rMax, b, n);
-    const lhs = pt.x * pt.x + pt.y * pt.y + pt.z * pt.z;
-    const rhs = rMax * rMax;
-    maxSphereError = Math.max(maxSphereError, Math.abs(lhs - rhs));
-  }
-  results.push({
-    label: "Spherical locus identity satisfies x² + y² + z² = r²",
-    pass: maxSphereError < 1e-4,
-    detail: `max deviation: ${maxSphereError.toExponential(3)}`,
-  });
-
-  // 3. Orthogonality check: Tangent R ⟂ Tangent B
-  const frame = surfaceFrameFromUV(params, probeU, probeV);
-  const ortho = Math.abs(dot(frame.tangentRUnit, frame.tangentBUnit));
-  results.push({
-    label: "Orthogonal coordinate metric: ∂S/∂r ⟂ ∂S/∂b everywhere",
-    pass: ortho < 1e-4,
-    detail: `dot product = ${ortho.toExponential(3)} (strict orthogonal system)`,
-  });
-
-  // 4. Cylindrical-section pitch consistency check
-  const bMid = degToRad(0.5 * (bMin + bMax));
-  const deltaB = 1e-4;
-  const bA = bMid - deltaB;
-  const bB = bMid + deltaB;
-  const thetaA = n * bA;
-  const thetaB = n * bB;
-  const rhoProbe = frame.localRadius;
-  const zA = rhoProbe * Math.tan(bA);
-  const zB = rhoProbe * Math.tan(bB);
-  const numTanBeta = (zB - zA) / (rhoProbe * (thetaB - thetaA));
-  const anaTanBeta = 1 / (n * Math.cos(bMid) * Math.cos(bMid));
-  const pitchConsistent = approximatelyEqual(numTanBeta, anaTanBeta, 1e-3);
-
-  results.push({
-    label: "Cylindrical-section pitch satisfies tan(β) = 1 / (n · cos²b)",
-    pass: pitchConsistent,
-    detail: `analytical = ${anaTanBeta.toFixed(3)}, numerical = ${numTanBeta.toFixed(3)}`,
-  });
-
-  // 6. Blade count check
-  results.push({
-    label: "Blade count within test rig support (1 to 8 blades)",
-    pass: Number.isInteger(bladeCount) && bladeCount >= 1 && bladeCount <= 8,
-    detail: `${bladeCount} blades, ${(360 / bladeCount).toFixed(1)}° radial spacing`,
-  });
-
-  return results;
-}
 
 const VIEW_KEYS = [
   { key: "side", label: "Side (yz)" },
@@ -127,7 +38,7 @@ function formatRadius(val) {
 export default function App() {
   const [params, setParams] = useState(() => clampSurfaceParams(defaultParams));
   const [viewRequest, setViewRequest] = useState({ key: sceneDefaults.startupView, nonce: 0 });
-  const [activeTab, setActiveTab] = useState("geometry");
+  const [activeTab, setActiveTab] = useState("design");
   const currentGeometryRef = useRef(null);
 
   const updateParam = (key, val) => {
@@ -140,7 +51,6 @@ export default function App() {
     });
   };
 
-  const validationResults = useMemo(() => runValidation(params), [params]);
   const aeroMetrics = useMemo(() => calculateAeroMetrics(params), [params]);
   const probeFrame = useMemo(() => surfaceFrameFromUV(params, params.probeU, params.probeV), [params]);
 
@@ -181,13 +91,28 @@ export default function App() {
 
           {/* Viewport Top Action Bar */}
           <div className="viewport-quick-bar">
-            <button
-              type="button"
-              className={`action-btn ${params.isRunning ? "active" : ""}`}
-              onClick={() => updateParam("isRunning", !params.isRunning)}
-            >
-              {params.isRunning ? "❚❚ Pause Spin" : "▶ Start Spin"}
-            </button>
+            <div className="spin-control-group">
+              <button
+                type="button"
+                className={`action-btn ${params.isRunning ? "active" : ""}`}
+                onClick={() => updateParam("isRunning", !params.isRunning)}
+              >
+                {params.isRunning ? "❚❚ Pause Spin" : "▶ Start Spin"}
+              </button>
+              <label className="rpm-control">
+                <span>RPM</span>
+                <input
+                  type="range"
+                  min={paramRanges.rpm.min}
+                  max={paramRanges.rpm.max}
+                  step={paramRanges.rpm.step}
+                  value={params.rpm}
+                  aria-label="Shaft speed in revolutions per minute"
+                  onChange={(e) => updateParam("rpm", e.target.value)}
+                />
+                <strong>{params.rpm}</strong>
+              </label>
+            </div>
             <button type="button" className="action-btn" onClick={handleExportSTL}>
               {params.solidBlade ? "⬇ Export Solid STL (3D Print)" : "⬇ Export Surface STL (Sheet)"}
             </button>
@@ -224,10 +149,8 @@ export default function App() {
           {/* Navigation Tabs */}
           <nav className="tab-nav">
             {[
-              { id: "geometry", label: "Geometry" },
-              { id: "aero", label: "Kinematics" },
-              { id: "inspection", label: "Probe & Cuts" },
-              { id: "validation", label: "Validation" },
+              { id: "design", label: "Design" },
+              { id: "inspect", label: "Inspect" },
             ].map((t) => (
               <button
                 key={t.id}
@@ -240,8 +163,8 @@ export default function App() {
             ))}
           </nav>
 
-          {/* TAB 1: GEOMETRY */}
-          {activeTab === "geometry" && (
+          {/* DESIGN TAB */}
+          {activeTab === "design" && (
             <div className="tab-pane">
               {/* Main controls */}
               <section className="card">
@@ -424,88 +347,46 @@ export default function App() {
                   ))}
                 </div>
               </section>
-            </div>
-          )}
 
-          {/* TAB 2: KINEMATICS */}
-          {activeTab === "aero" && (
-            <div className="tab-pane">
               <section className="card">
-                <div className="card-header">
-                  <strong>Propeller Kinematics</strong>
-                </div>
-
-                <div className="control-row">
-                  <div className="label-bar">
-                    <span>Shaft RPM</span>
-                    <strong>{params.rpm} RPM</strong>
+                <details>
+                  <summary className="section-summary">Geometric estimates</summary>
+                  <div className="metric-grid">
+                    <div className="metric-box">
+                      <div className="metric-label">Minimum Pitch Angle</div>
+                      <div className="metric-val">{aeroMetrics.minPitchAngleDeg.toFixed(1)}°</div>
+                    </div>
+                    <div className="metric-box">
+                      <div className="metric-label">Maximum Pitch Angle</div>
+                      <div className="metric-val">{aeroMetrics.maxPitchAngleDeg.toFixed(1)}°</div>
+                    </div>
+                    <div className="metric-box">
+                      <div className="metric-label">Area Ratio Estimate</div>
+                      <div className="metric-val">{aeroMetrics.ear.toFixed(2)}</div>
+                    </div>
+                    <div className="metric-box">
+                      <div className="metric-label">Mean Geometric Pitch</div>
+                      <div className="metric-val">{formatRadius(aeroMetrics.meanGeometricPitch)}</div>
+                    </div>
+                    <div className="metric-box">
+                      <div className="metric-label">Tip Speed</div>
+                      <div className="metric-val">{aeroMetrics.tipSpeed.toFixed(1)} m/s</div>
+                    </div>
+                    <div className="metric-box">
+                      <div className="metric-label">Ideal Pitch Speed (Zero Slip)</div>
+                      <div className="metric-val">{aeroMetrics.theoreticalSpeedMean.toFixed(1)} m/s</div>
+                    </div>
                   </div>
-                  <input
-                    type="range"
-                    min={paramRanges.rpm.min}
-                    max={paramRanges.rpm.max}
-                    step={paramRanges.rpm.step}
-                    value={params.rpm}
-                    onChange={(e) => updateParam("rpm", e.target.value)}
-                  />
-                </div>
-
-                <div className="metric-grid">
-                  <div className="metric-box">
-                    <div className="metric-label">Leading Edge Pitch</div>
-                    <div className="metric-val">{aeroMetrics.minPitchAngleDeg.toFixed(1)}°</div>
-                  </div>
-                  <div className="metric-box">
-                    <div className="metric-label">Trailing Edge Pitch</div>
-                    <div className="metric-val">{aeroMetrics.maxPitchAngleDeg.toFixed(1)}°</div>
-                  </div>
-                  <div className="metric-box">
-                    <div className="metric-label">Expanded Area Ratio (EAR)</div>
-                    <div className="metric-val">{aeroMetrics.ear.toFixed(2)}</div>
-                  </div>
-                  <div className="metric-box">
-                    <div className="metric-label">Mean Geometric Pitch</div>
-                    <div className="metric-val">{formatRadius(aeroMetrics.meanGeometricPitch)}</div>
-                  </div>
-                  <div className="metric-box">
-                    <div className="metric-label">Tip Speed</div>
-                    <div className="metric-val">{aeroMetrics.tipSpeed.toFixed(1)} m/s</div>
-                  </div>
-                  <div className="metric-box">
-                    <div className="metric-label">Theoretical Advance</div>
-                    <div className="metric-val">{aeroMetrics.theoreticalSpeedMean.toFixed(1)} m/s</div>
-                  </div>
-                </div>
-
-                <div style={{ marginTop: 12 }}>
-                  <label className="toggle-row">
-                    <input
-                      type="checkbox"
-                      checked={params.showFlow}
-                      onChange={(e) => updateParam("showFlow", e.target.checked)}
-                    />
-                    <span>
-                      <strong>Visualize Helical Slipstream Streamlines</strong>
-                    </span>
-                  </label>
-
-                  <label className="toggle-row">
-                    <input
-                      type="checkbox"
-                      checked={params.showThrustVector}
-                      onChange={(e) => updateParam("showThrustVector", e.target.checked)}
-                    />
-                    <span>
-                      <strong>Show Shaft Thrust Vector</strong>
-                    </span>
-                  </label>
-                </div>
+                  <p className="hint-text">
+                    Geometry-derived estimates only; pitch speed assumes zero slip and is not a thrust or performance prediction.
+                  </p>
+                </details>
               </section>
             </div>
           )}
 
-          {/* TAB 3: PROBE & SECTIONS */}
-          {activeTab === "inspection" && (
+          {/* INSPECT TAB */}
+          {activeTab === "inspect" && (
             <div className="tab-pane">
               <section className="card">
                 <strong>Surface & Section Overlays (Blade 1)</strong>
@@ -517,7 +398,7 @@ export default function App() {
                     onChange={(e) => updateParam("showCylCut", e.target.checked)}
                   />
                   <span>
-                    <strong style={{ color: "#ff80ab" }}>Cylindrical Section Cut (ρ = const)</strong>
+                    <strong style={{ color: "#ff80ab" }}>Cylindrical section overlay (ρ = const)</strong>
                   </span>
                 </label>
 
@@ -528,7 +409,7 @@ export default function App() {
                     onChange={(e) => updateParam("showIsoR", e.target.checked)}
                   />
                   <span>
-                    <strong style={{ color: "#ffe082" }}>Spherical Iso-Arc (r = const)</strong>
+                    <strong style={{ color: "#ffe082" }}>Constant-radius overlay (r = const)</strong>
                   </span>
                 </label>
 
@@ -539,7 +420,7 @@ export default function App() {
                     onChange={(e) => updateParam("showIsoB", e.target.checked)}
                   />
                   <span>
-                    <strong style={{ color: "#80deea" }}>Radial Elevation Ray (b = const)</strong>
+                    <strong style={{ color: "#80deea" }}>Constant-elevation overlay (b = const)</strong>
                   </span>
                 </label>
 
@@ -550,47 +431,47 @@ export default function App() {
                     onChange={(e) => updateParam("showProbe", e.target.checked)}
                   />
                   <span>
-                    <strong>Interactive Probe & Local Frame Triad</strong>
+                    <strong>Show probe marker and local frame</strong>
                   </span>
                 </label>
 
-                {params.showProbe && (
-                  <div style={{ marginTop: 12 }}>
-                    <div className="control-row">
-                      <div className="label-bar">
-                        <span>Radial Span Station (u)</span>
-                        <strong>{(params.probeU * 100).toFixed(0)}%</strong>
-                      </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={1}
-                        step={0.01}
-                        value={params.probeU}
-                        onChange={(e) => updateParam("probeU", e.target.value)}
-                      />
+                <div style={{ marginTop: 12 }}>
+                  <div className="control-row">
+                    <div className="label-bar">
+                      <span>Radial station (r)</span>
+                      <strong>{formatRadius(probeFrame.r)}</strong>
                     </div>
-
-                    <div className="control-row">
-                      <div className="label-bar">
-                        <span>Chordwise Elevation Station (v)</span>
-                        <strong>{(params.probeV * 100).toFixed(0)}%</strong>
-                      </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={1}
-                        step={0.01}
-                        value={params.probeV}
-                        onChange={(e) => updateParam("probeV", e.target.value)}
-                      />
-                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={params.probeU}
+                      aria-label="Probe radius station"
+                      onChange={(e) => updateParam("probeU", e.target.value)}
+                    />
                   </div>
-                )}
+
+                  <div className="control-row">
+                    <div className="label-bar">
+                      <span>Elevation station (b)</span>
+                      <strong>{probeFrame.bDeg.toFixed(1)}°</strong>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={params.probeV}
+                      aria-label="Probe elevation station"
+                      onChange={(e) => updateParam("probeV", e.target.value)}
+                    />
+                  </div>
+                </div>
               </section>
 
               <section className="card">
-                <strong>Probe Differential Readout</strong>
+                <strong>Readout at selected station</strong>
                 <div className="readout-box">
                   <div><strong>Position:</strong> x = {formatRadius(probeFrame.point.x)}, y = {formatRadius(probeFrame.point.y)}, z = {formatRadius(probeFrame.point.z)}</div>
                   <div><strong>Spherical Radius (r):</strong> {formatRadius(probeFrame.r)}</div>
@@ -601,31 +482,26 @@ export default function App() {
                   <div><strong>Unit Normal (n̂):</strong> ({probeFrame.normal.x.toFixed(3)}, {probeFrame.normal.y.toFixed(3)}, {probeFrame.normal.z.toFixed(3)})</div>
                 </div>
               </section>
-            </div>
-          )}
 
-          {/* TAB 4: VALIDATION */}
-          {activeTab === "validation" && (
-            <div className="tab-pane">
               <section className="card">
-                <div className="card-header">
-                  <strong>Mathematical Authority Validation</strong>
-                  <span className="pill-tag pass">
-                    {validationResults.every((r) => r.pass) ? "ALL CHECKS PASSED" : "REVIEW REQUIRED"}
-                  </span>
-                </div>
-
-                <div className="validation-list">
-                  {validationResults.map((r, i) => (
-                    <div key={i} className="validation-item">
-                      <span className="check-icon">{r.pass ? "✓" : "✗"}</span>
-                      <div>
-                        <div className="validation-label">{r.label}</div>
-                        {r.detail && <div className="validation-detail">{r.detail}</div>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <strong>Illustrative motion overlays</strong>
+                <label className="toggle-row">
+                  <input
+                    type="checkbox"
+                    checked={params.showFlow}
+                    onChange={(e) => updateParam("showFlow", e.target.checked)}
+                  />
+                  <span><strong>Show illustrative helical lines</strong></span>
+                </label>
+                <label className="toggle-row">
+                  <input
+                    type="checkbox"
+                    checked={params.showThrustVector}
+                    onChange={(e) => updateParam("showThrustVector", e.target.checked)}
+                  />
+                  <span><strong>Show rotation-direction arrow</strong></span>
+                </label>
+                <p className="hint-text">Visible while the propeller is spinning; these do not represent computed airflow or thrust.</p>
               </section>
             </div>
           )}
