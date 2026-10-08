@@ -5,8 +5,8 @@ import {
   defaultParams,
   paramRanges,
   sceneDefaults,
-  validationConfig,
-} from "./config/defaultParams";
+  validationConfig, patentProfiles } from "./config/defaultParams";
+import ProfileThumb from "./components/ProfileThumb";
 import PropellerScene from "./scene/PropellerScene";
 import {
   calculateAeroMetrics,
@@ -47,7 +47,7 @@ function runValidation(params) {
     }
   }
   results.push({
-    label: "Original drawing case n = 1 strictly matches governing geometry",
+    label: "180° / 180° case matches the original drawing equations",
     pass: drawingMatch,
   });
 
@@ -133,7 +133,8 @@ export default function App() {
   const updateParam = (key, val) => {
     setParams((prev) => {
       const nextVal = typeof val === "boolean" || typeof val === "string" ? val : Number(val);
-      const updated = clampSurfaceParams({ ...prev, [key]: nextVal });
+      const extra = key === "profile" ? { n: patentProfiles.find((p) => p.key === val)?.n ?? prev.n } : {};
+      const updated = clampSurfaceParams({ ...prev, [key]: nextVal, ...extra });
       if (key !== "isRunning") updated.isRunning = prev.isRunning;
       return updated;
     });
@@ -150,7 +151,7 @@ export default function App() {
         currentGeometryRef.current,
         params.bladeCount,
         params.showShaft ? { radius: (params.rMax * params.shaftRatio) / 2, length: params.rMax * 2 } : null,
-        `propeller_n${params.n}_${params.bladeCount}blades_${modeName}.stl`
+        `propeller_${params.profile}_${params.bladeCount}blades_${modeName}.stl`
       );
     }
   };
@@ -206,8 +207,8 @@ export default function App() {
           <div className="viewport-badge">
             <span className="badge-title">Tip Radius:</span>
             <span className="badge-value">{formatRadius(params.rMax)}</span>
-            <span className="badge-title" style={{ marginLeft: 8 }}>Span:</span>
-            <span className="badge-value">{params.bMin > 0 ? `+${params.bMin}` : params.bMin}° → {params.bMax > 0 ? `+${params.bMax}` : params.bMax}°</span>
+            <span className="badge-title" style={{ marginLeft: 8 }}>Line / shaft:</span>
+            <span className="badge-value">{patentProfiles.find((p) => p.key === params.profile)?.label}</span>
           </div>
         </div>
       </main>
@@ -219,7 +220,7 @@ export default function App() {
             <div className="brand-badge">Davidson HeliSphere • Math-First Rig</div>
             <h1 className="brand-title">Parametric Propeller Viewer</h1>
             <p className="brand-desc">
-              A propeller blade whose twist follows a = n · b.
+              Blade surface from the 2013 patent application: a line turns 180° while its shaft turns 180° or 360°.
             </p>
           </header>
 
@@ -249,38 +250,28 @@ export default function App() {
               <section className="card">
                 <div className="card-header">
                   <strong>Propeller</strong>
-                  <span className="pill-tag">a = n · b</span>
                 </div>
 
                 <div className="control-row">
                   <div className="label-bar">
-                    <span>Angular multiplier (n)</span>
-                    <strong>{params.n.toFixed(3)}</strong>
+                    <span>Blade surface (line / shaft turn)</span>
                   </div>
-                  <input
-                    type="range"
-                    min={paramRanges.n.min}
-                    max={paramRanges.n.max}
-                    step={paramRanges.n.step}
-                    value={params.n}
-                    onChange={(e) => updateParam("n", e.target.value)}
-                  />
-                  <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                    <input
-                      type="number"
-                      min={paramRanges.n.min}
-                      max={paramRanges.n.max}
-                      step={0.001}
-                      value={params.n}
-                      onChange={(e) => updateParam("n", e.target.value)}
-                      style={{ flex: 1, minWidth: 0 }}
-                    />
-                    <button type="button" className="chip-btn" onClick={() => updateParam("n", defaultParams.n)}>
-                      1.618
-                    </button>
-                    <button type="button" className="chip-btn" onClick={() => updateParam("n", 1)}>
-                      1 (original)
-                    </button>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    {patentProfiles.map((p) => (
+                      <button
+                        key={p.key}
+                        type="button"
+                        className={`chip-btn ${params.profile === p.key ? "active" : ""}`}
+                        onClick={() => updateParam("profile", p.key)}
+                        style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "8px 6px" }}
+                      >
+                        <ProfileThumb n={p.n} />
+                        <strong style={{ fontSize: 14 }}>{p.label}</strong>
+                        <span style={{ fontSize: 11, opacity: 0.7 }}>
+                          line turns {p.line}°, shaft turns {p.shaft}°
+                        </span>
+                      </button>
+                    ))}
                   </div>
                 </div>
 
@@ -343,41 +334,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="control-row">
-                    <div className="label-bar">
-                      <span>Elevation span (bMin → bMax)</span>
-                      <strong>{params.bMin}° → {params.bMax > 0 ? `+${params.bMax}` : params.bMax}°</strong>
-                    </div>
-                    <div className="dual-slider">
-                      <input
-                        type="range"
-                        min={paramRanges.b.min}
-                        max={params.bMax - paramRanges.b.minSpan}
-                        step={paramRanges.b.step}
-                        value={params.bMin}
-                        onChange={(e) => updateParam("bMin", e.target.value)}
-                      />
-                      <input
-                        type="range"
-                        min={params.bMin + paramRanges.b.minSpan}
-                        max={paramRanges.b.max}
-                        step={paramRanges.b.step}
-                        value={params.bMax}
-                        onChange={(e) => updateParam("bMax", e.target.value)}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      className="chip-btn"
-                      style={{ marginTop: 6 }}
-                      onClick={() => {
-                        updateParam("bMin", -90);
-                        updateParam("bMax", 90);
-                      }}
-                    >
-                      Reset to full −90° → +90°
-                    </button>
-                  </div>
                 </details>
               </section>
 
@@ -433,7 +389,7 @@ export default function App() {
                   />
                   <span>
                     <strong>Include shaft</strong>
-                    <small>Straight rod on the axis that joins the blades. Included in the STL export.</small>
+                    <small style={{ display: "block", opacity: 0.7, marginTop: 2 }}>Straight rod on the axis that joins the blades. Included in the STL export.</small>
                   </span>
                 </label>
 

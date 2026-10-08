@@ -1,7 +1,17 @@
+// The two blade surfaces in the 2013 patent application (WO 2013/115658):
+// a fixed-length line turns 180 degrees about its end point while the shaft it
+// is attached to turns either 180 or 360 degrees. Ratio shaft/line gives the
+// azimuth-per-elevation factor used by the surface maths.
+export const patentProfiles = [
+  { key: "180-180", label: "180° / 180°", line: 180, shaft: 180, n: 1 },
+  { key: "180-360", label: "180° / 360°", line: 180, shaft: 360, n: 2 },
+];
+
 export const defaultParams = {
   rMin: 0.05,
   rMax: 1.0,
-  n: 1.618,
+  profile: "180-180",
+  n: 1,
   bMin: -90,
   bMax: 90,
   bladeCount: 2,
