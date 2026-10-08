@@ -217,11 +217,8 @@ export default function App() {
       <aside className="control-panel">
         <div className="control-panel__scroll">
           <header className="brand-header">
-            <div className="brand-badge">Davidson HeliSphere • Math-First Rig</div>
+            <div className="brand-badge">Davidson Propulsion Labs</div>
             <h1 className="brand-title">Parametric Propeller Viewer</h1>
-            <p className="brand-desc">
-              Blade surface from the 2013 patent application: a line turns 180° while its shaft turns 180° or 360°.
-            </p>
           </header>
 
           {/* Navigation Tabs */}
