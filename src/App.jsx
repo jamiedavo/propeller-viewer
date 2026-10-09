@@ -45,7 +45,13 @@ export default function App() {
     setParams((prev) => {
       const nextVal = typeof val === "boolean" || typeof val === "string" ? val : Number(val);
       const extra = key === "profile" ? { n: patentProfiles.find((p) => p.key === val)?.n ?? prev.n } : {};
-      const updated = clampSurfaceParams({ ...prev, [key]: nextVal, ...extra });
+      // Keep the inner cut-off (centre hole) proportional to the tip radius when
+      // the Size slider changes, so shrinking the propeller doesn't leave a big hole.
+      const scaled =
+        key === "rMax" && prev.rMax > 0
+          ? { rMin: prev.rMin * (nextVal / prev.rMax) }
+          : {};
+      const updated = clampSurfaceParams({ ...prev, [key]: nextVal, ...extra, ...scaled });
       if (key !== "isRunning") updated.isRunning = prev.isRunning;
       return updated;
     });
