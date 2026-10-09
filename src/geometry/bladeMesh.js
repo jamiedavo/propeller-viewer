@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { clamp, degToRad, lerp, surfaceNormal, surfacePoint, cylindricalPitchAngleDeg } from "./surfaceMath";
+import { loadManifold } from "./manifoldLoader";
 
 /**
  * Builds mathematical camber sheet or a 100% watertight manifold solid blade.
@@ -211,9 +212,12 @@ export function buildBladeSurfaceData({
 }
 
 /**
- * Downloads standard ASCII STL file of the propeller assembly.
+ * Legacy writer: every blade (and the shaft) is written as its own separate
+ * shell. Fine for open sheet exports, but for solids the blades touch along the
+ * Z axis, so the shells share edges / overlap and slicers have to "repair" them.
+ * Solid exports use buildUnionedSTL() below instead.
  */
-export function exportAssemblyToSTL(geometry, bladeCount, shaft, filename = "parametric_propeller.stl") {
+function buildSeparateShellsSTL(geometry, bladeCount, shaft) {
   const posAttr = geometry.getAttribute("position");
   const idxAttr = geometry.getIndex();
 
@@ -284,11 +288,151 @@ export function exportAssemblyToSTL(geometry, bladeCount, shaft, filename = "par
   }
 
   stl += "endsolid ParametricPropeller\n";
+  return stl;
+}
 
+const MM = 1000; // the app works in metres; STL is read as millimetres
+
+// Exact cos/sin for the common 90/180/270 degree blade rotations, so blades that
+// share an edge on the axis (e.g. 2 blades at 0/180 deg) land on identical vertices.
+const snapTrig = (x) => {
+  if (Math.abs(x) < 1e-12) return 0;
+  if (Math.abs(Math.abs(x) - 1) < 1e-12) return Math.sign(x);
+  return x;
+};
+
+function getTriangleIndices(geometry) {
+  const idxAttr = geometry.getIndex();
+  if (idxAttr) return Uint32Array.from(idxAttr.array);
+  const n = geometry.getAttribute("position").count;
+  return Uint32Array.from({ length: n }, (_, i) => i);
+}
+
+/**
+ * Builds ONE watertight, manifold solid: all blades and the shaft are fused with
+ * a proper boolean union (manifold-3d), so touching/overlapping parts become a
+ * single clean shell with no internal walls or shared edges.
+ * Returns the STL text, or null if the union could not be produced.
+ */
+export function buildUnionedSTL(wasm, geometry, bladeCount, shaft) {
+  const { Manifold, Mesh } = wasm;
+  const posAttr = geometry.getAttribute("position");
+  const triVerts = getTriangleIndices(geometry);
+  const parts = [];
+
+  for (let b = 0; b < bladeCount; b++) {
+    const rotAngle = (2 * Math.PI * b) / bladeCount;
+    const cosA = snapTrig(Math.cos(rotAngle));
+    const sinA = snapTrig(Math.sin(rotAngle));
+
+    const vertProperties = new Float32Array(posAttr.count * 3);
+    for (let i = 0; i < posAttr.count; i++) {
+      const x = posAttr.getX(i);
+      const y = posAttr.getY(i);
+      vertProperties[i * 3] = (x * cosA - y * sinA) * MM;
+      vertProperties[i * 3 + 1] = (x * sinA + y * cosA) * MM;
+      vertProperties[i * 3 + 2] = posAttr.getZ(i) * MM;
+    }
+
+    const mesh = new Mesh({ numProp: 3, vertProperties, triVerts: triVerts.slice() });
+    mesh.merge(); // weld duplicate vertices so the blade is a closed 2-manifold
+    const blade = new Manifold(mesh);
+    if (blade.status() !== "NoError" || blade.isEmpty()) {
+      throw new Error(`Blade ${b} is not a valid manifold (status: ${blade.status()})`);
+    }
+    parts.push(blade);
+  }
+
+  if (shaft) {
+    // Let the shaft stick out 0.25 mm past each blade tip. Its end caps would
+    // otherwise be exactly flush with the blade tips (coplanar faces make the
+    // boolean emit zero-area slivers), and for even blade counts the blades touch
+    // along the Z axis, so the shaft needs to cover that contact line right to the end.
+    const len = shaft.length * MM + 0.5;
+    parts.push(Manifold.cylinder(len, shaft.radius * MM, shaft.radius * MM, 48, true));
+  }
+
+  // simplify() collapses the near-degenerate edges the boolean creates where the
+  // shaft cuts through the thin blade edges, without moving the surface by more
+  // than 10 microns.
+  const merged = Manifold.union(parts).simplify(1e-2);
+  if (merged.status() !== "NoError" || merged.isEmpty()) {
+    throw new Error(`Union failed (status: ${merged.status()})`);
+  }
+
+  // The boolean can leave a handful of zero-volume sliver fragments near the hub
+  // where the thin blade edges meet the shaft. They add nothing to the part but
+  // show up as stray shells / non-manifold edges in slicers, so drop them.
+  const pieces = merged.decompose();
+  const maxVol = Math.max(...pieces.map((c) => Math.abs(c.volume())));
+  const kept = pieces.filter((c) => Math.abs(c.volume()) > maxVol * 1e-6);
+  const clean = kept.length === pieces.length ? merged : Manifold.compose(kept);
+
+  const out = clean.getMesh();
+  const np = out.numProp;
+  const vp = out.vertProperties;
+  const tv = out.triVerts;
+
+  let stl = "solid ParametricPropeller\n";
+  for (let t = 0; t < tv.length; t += 3) {
+    const a = tv[t] * np, b = tv[t + 1] * np, c = tv[t + 2] * np;
+    const ux = vp[b] - vp[a], uy = vp[b + 1] - vp[a + 1], uz = vp[b + 2] - vp[a + 2];
+    const vx = vp[c] - vp[a], vy = vp[c + 1] - vp[a + 1], vz = vp[c + 2] - vp[a + 2];
+    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const l = Math.hypot(nx, ny, nz) || 1;
+    nx /= l; ny /= l; nz /= l;
+    stl += `  facet normal ${nx.toExponential(6)} ${ny.toExponential(6)} ${nz.toExponential(6)}\n    outer loop\n`;
+    // 9 significant digits round-trips a float32 exactly. With fewer digits,
+    // near-coincident vertices collapse together when read back and recreate
+    // non-manifold edges.
+    for (const i of [a, b, c]) {
+      stl += `      vertex ${vp[i].toExponential(8)} ${vp[i + 1].toExponential(8)} ${vp[i + 2].toExponential(8)}\n`;
+    }
+    stl += "    endloop\n  endfacet\n";
+  }
+  stl += "endsolid ParametricPropeller\n";
+
+  parts.forEach((p) => p.delete());
+  pieces.forEach((p) => p.delete());
+  if (clean !== merged) clean.delete();
+  merged.delete();
+  return stl;
+}
+
+function downloadSTL(stl, filename) {
   const blob = new Blob([stl], { type: "text/plain" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
   link.download = filename;
   link.click();
   URL.revokeObjectURL(link.href);
+}
+
+/**
+ * Downloads an ASCII STL of the propeller assembly.
+ * Solid mode: blades + shaft are unioned into a single watertight solid.
+ * Sheet mode (or if the union fails): falls back to separate shells.
+ * Returns "merged" or "separate" so the UI can tell which was produced.
+ */
+export async function exportAssemblyToSTL(
+  geometry,
+  bladeCount,
+  shaft,
+  filename = "parametric_propeller.stl",
+  { solid = false } = {}
+) {
+  if (solid) {
+    try {
+      const wasm = await loadManifold();
+      const stl = buildUnionedSTL(wasm, geometry, bladeCount, shaft);
+      if (stl) {
+        downloadSTL(stl, filename);
+        return "merged";
+      }
+    } catch (err) {
+      console.warn("Solid union failed, falling back to separate shells:", err);
+    }
+  }
+  downloadSTL(buildSeparateShellsSTL(geometry, bladeCount, shaft), filename);
+  return "separate";
 }

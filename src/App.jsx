@@ -60,14 +60,15 @@ export default function App() {
   const aeroMetrics = useMemo(() => calculateAeroMetrics(params), [params]);
   const probeFrame = useMemo(() => surfaceFrameFromUV(params, params.probeU, params.probeV), [params]);
 
-  const handleExportSTL = () => {
+  const handleExportSTL = async () => {
     if (currentGeometryRef.current) {
       const modeName = params.solidBlade ? "solid" : "sheet_open";
-      exportAssemblyToSTL(
+      await exportAssemblyToSTL(
         currentGeometryRef.current,
         params.bladeCount,
         params.showShaft ? { radius: (params.rMax * params.shaftRatio) / 2, length: params.rMax * 2 } : null,
-        `propeller_${params.profile}_${params.bladeCount}blades_${modeName}.stl`
+        `propeller_${params.profile}_${params.bladeCount}blades_${modeName}.stl`,
+        { solid: params.solidBlade }
       );
     }
   };
@@ -315,7 +316,7 @@ export default function App() {
                   />
                   <span>
                     <strong>Include shaft</strong>
-                    <small style={{ display: "block", opacity: 0.7, marginTop: 2 }}>Straight rod on the axis that joins the blades. Included in the STL export.</small>
+                    <small style={{ display: "block", opacity: 0.7, marginTop: 2 }}>Straight rod on the axis that joins the blades. Included in the STL export. Recommended for 3D printing: it fuses the blades into one solid.</small>
                   </span>
                 </label>
 
